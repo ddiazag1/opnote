@@ -197,7 +197,7 @@ async function odLogin(){
   }catch{}
   // Try popup login first
   try{
-    const r=await msalApp.loginPopup({scopes:OD_SCOPES});
+    const r=await msalApp.loginPopup({scopes:OD_SCOPES,prompt:"select_account"});
     odAccount=r.account;
     const t=await msalApp.acquireTokenSilent({scopes:OD_SCOPES,account:odAccount});
     odLoadData();
@@ -207,7 +207,7 @@ async function odLogin(){
     if(e.errorCode==="popup_window_error"||e.errorCode==="empty_window_error"){
       // Popup blocked — fall back to redirect
       try{
-        await msalApp.loginRedirect({scopes:OD_SCOPES});
+        await msalApp.loginRedirect({scopes:OD_SCOPES,prompt:"select_account"});
         return null;// page will redirect
       }catch(e2){
         alert("Sign-in failed. Please allow popups for this site and try again.\n\nError: "+(e2.message||e2));
