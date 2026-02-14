@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="OpNote">
 <meta name="theme-color" content="#020617">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23020617' width='100' height='100' rx='20'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233b82f6'>🧠</text></svg>">
-<title>OpNote Intelligence v9.1</title>
+<title>OpNote Intelligence v9.1.1</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#020617;color:#cbd5e1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
@@ -127,16 +127,27 @@ let odPath=[];// breadcrumb stack [{name,id}]
 
 function initMSAL(){
   if(!OD_CLIENT_ID||msalApp)return;
+  if(typeof msal==="undefined"){console.error("MSAL library not loaded from CDN");return;}
   try{
     msalApp=new msal.PublicClientApplication({auth:{clientId:OD_CLIENT_ID,authority:OD_AUTHORITY,redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:"localStorage"}});
+    // REQUIRED: handle redirect promise before any other MSAL calls
+    msalApp.handleRedirectPromise().then(resp=>{
+      if(resp&&resp.account){odAccount=resp.account;render();}
+    }).catch(e=>console.error("MSAL redirect:",e));
     // Check for existing session
     const accts=msalApp.getAllAccounts();
     if(accts.length)odAccount=accts[0];
-  }catch(e){console.error("MSAL init:",e);}
+    console.log("MSAL initialized, accounts:",accts.length);
+  }catch(e){console.error("MSAL init:",e);msalApp=null;}
 }
 
 async function odLogin(){
-  if(!msalApp)return null;
+  initMSAL();// ensure initialized
+  if(!msalApp){
+    if(typeof msal==="undefined"){alert("OneDrive error: Microsoft library failed to load. Check your internet connection and refresh.");}
+    else{alert("OneDrive error: Invalid Client ID. Go to Settings → Reset Client ID and re-enter it.");}
+    return null;
+  }
   try{
     // Try silent first
     if(odAccount){
@@ -144,15 +155,30 @@ async function odLogin(){
       return r.accessToken;
     }
   }catch{}
-  // Popup login
+  // Try popup login first
   try{
     const r=await msalApp.loginPopup({scopes:OD_SCOPES});
     odAccount=r.account;
     const t=await msalApp.acquireTokenSilent({scopes:OD_SCOPES,account:odAccount});
-    // Auto-load cloud data on first login
     odLoadData();
     return t.accessToken;
-  }catch(e){console.error("OD login:",e);return null;}
+  }catch(e){
+    console.error("OD popup login:",e);
+    if(e.errorCode==="popup_window_error"||e.errorCode==="empty_window_error"){
+      // Popup blocked — fall back to redirect
+      try{
+        await msalApp.loginRedirect({scopes:OD_SCOPES});
+        return null;// page will redirect
+      }catch(e2){
+        alert("Sign-in failed. Please allow popups for this site and try again.\n\nError: "+(e2.message||e2));
+      }
+    }else if(e.errorCode==="user_cancelled"){
+      // user closed popup, no alert needed
+    }else{
+      alert("OneDrive sign-in error:\n\n"+(e.errorMessage||e.message||JSON.stringify(e)));
+    }
+    return null;
+  }
 }
 
 async function odGetToken(){
@@ -1244,7 +1270,7 @@ function render(){
   let h="";
 
   // Header
-  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v9.1 \u00b7 ${TODAY}${syncStatus==="ready"?' \u00b7 <span style="color:#86efac">Synced</span>':""}</div></div><div style="display:flex;gap:6px">`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v9.1.1 \u00b7 ${TODAY}${syncStatus==="ready"?' \u00b7 <span style="color:#86efac">Synced</span>':""}</div></div><div style="display:flex;gap:6px">`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">\u2699\uFE0F</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',addTarget:'note',text:'',_gc:{},_fi:{},_qc:{},macro:null,macroVals:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,_sysPrompt:null,clinicVisit:'new',clinicPt:'new',showEMRef:false})">+ New</button>`;
   h+=`</div></div>`;
