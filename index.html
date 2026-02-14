@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="OpNote">
 <meta name="theme-color" content="#020617">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23020617' width='100' height='100' rx='20'/><text x='50' y='68' text-anchor='middle' font-size='50' fill='%233b82f6'>🧠</text></svg>">
-<title>OpNote Intelligence v9.1.2</title>
+<title>OpNote Intelligence v9.2</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#020617;color:#cbd5e1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
@@ -135,9 +135,23 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 // API key — user enters once, saved in localStorage
 let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
+// Auto-import API key from URL hash (e.g. #key=sk-ant-...)
+(function(){
+  const h=window.location.hash;
+  if(h.startsWith("#key=")){
+    const k=decodeURIComponent(h.slice(5));
+    if(k.startsWith("sk-ant-")){
+      API_KEY=k;
+      localStorage.setItem("opnote-api-key",k);
+      window.history.replaceState(null,"",window.location.pathname);// clear hash
+      setTimeout(()=>alert("✅ API key saved! You're ready to go."),500);
+    }
+  }
+})();
+
 // ==== ONEDRIVE CONFIG ====
 // Replace with your Azure App Registration client ID
-const OD_CLIENT_ID=localStorage.getItem("opnote-od-clientid")||"";
+const OD_CLIENT_ID=localStorage.getItem("opnote-od-clientid")||"93ac9684-2a1b-4c06-8f49-6ae76e00ffc7";
 const OD_AUTHORITY="https://login.microsoftonline.com/common";
 const OD_SCOPES=["Files.ReadWrite.All","User.Read"];
 let msalApp=null;
@@ -152,6 +166,7 @@ function initMSAL(){
   }
   try{
     msalApp=new msal.PublicClientApplication({auth:{clientId:OD_CLIENT_ID,authority:OD_AUTHORITY,redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:"localStorage"}});
+    console.log("MSAL redirect URI:",window.location.origin+window.location.pathname);
     // REQUIRED: handle redirect promise before any other MSAL calls
     msalApp.handleRedirectPromise().then(resp=>{
       if(resp&&resp.account){odAccount=resp.account;render();}
@@ -199,6 +214,8 @@ async function odLogin(){
       }
     }else if(e.errorCode==="user_cancelled"){
       // user closed popup, no alert needed
+    }else if(e.message&&e.message.includes("redirect_uri")){
+      alert("Redirect URI mismatch!\n\nGo to Azure Portal → App registrations → OpNote Intelligence → Authentication\n\nAdd this EXACT redirect URI as a Single-page application:\n\n"+window.location.origin+window.location.pathname+"\n\n(Copy from the browser console if needed)");
     }else{
       alert("OneDrive sign-in error:\n\n"+(e.errorMessage||e.message||JSON.stringify(e)));
     }
@@ -429,6 +446,11 @@ function lsS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{} if(k===
 function migrateCases(){let a=ls(SK,[]);const ids=new Set(a.map(c=>c.id));["on3-cases","on32-cases","on4-cases","on5-cases","on6-cases"].forEach(k=>{ls(k,[]).forEach(c=>{if(c.id&&!ids.has(c.id)){a.push(c);ids.add(c.id);}});localStorage.removeItem(k);});a.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,a);return a;}
 // ---- EXPORT/IMPORT with Web Share API ----
 function exportFileName(){return"opnote-backup-"+new Date().toISOString().slice(0,10)+".json";}
+function shareKeyToPhone(){
+  if(!API_KEY){alert("Set your API key first.");return;}
+  setState({showQR:true,showSettings:true});
+}
+
 async function exportCases(){
   const d=JSON.stringify(ls(SK,[]),null,2);
   const blob=new Blob([d],{type:"application/json"});
@@ -994,7 +1016,7 @@ let state={
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
   cases:migrateCases(),selCase:null,addend:"",addTarget:"note",caseTab:"all",
   wk:ls("opnote-wkey",""),ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
-  showSettings:false,editing:false,editText:"",_gc:{},_fi:{},_qc:{},renaming:null,levelUpResult:null,
+  showSettings:false,showQR:false,editing:false,editText:"",_gc:{},_fi:{},_qc:{},renaming:null,levelUpResult:null,
   tStart:null,tNote:null,tCopy:null,
   linkedTo:null,detailNoteIdx:0
 };
@@ -1295,7 +1317,7 @@ function render(){
   let h="";
 
   // Header
-  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v9.1.2 \u00b7 ${TODAY}${syncStatus==="ready"?' \u00b7 <span style="color:#86efac">Synced</span>':""}</div></div><div style="display:flex;gap:6px">`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v9.2 \u00b7 ${TODAY}${syncStatus==="ready"?' \u00b7 <span style="color:#86efac">Synced</span>':""}</div></div><div style="display:flex;gap:6px">`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">\u2699\uFE0F</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',addTarget:'note',text:'',_gc:{},_fi:{},_qc:{},macro:null,macroVals:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,_sysPrompt:null,clinicVisit:'new',clinicPt:'new',showEMRef:false})">+ New</button>`;
   h+=`</div></div>`;
@@ -1306,7 +1328,18 @@ function render(){
     h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:10px">SETTINGS</div>`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Anthropic API Key <span style="color:#f87171">(required)</span></div>`;
     h+=`<input type="password" class="inp" value="${esc(API_KEY)}" placeholder="sk-ant-..." onchange="API_KEY=this.value;localStorage.setItem('opnote-api-key',this.value);render()" style="margin-bottom:4px">`;
-    h+=API_KEY?`<div style="font-size:11px;color:#86efac;margin-bottom:8px">\u2713 Active</div>`:`<div style="font-size:11px;color:#f87171;margin-bottom:8px">Required to process notes</div>`;
+    h+=API_KEY?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:11px;color:#86efac">\u2713 Active</span><button class="btn" style="background:#1e3a5f;padding:4px 10px;font-size:10px;min-height:24px" onclick="shareKeyToPhone()">📱 Share to Phone</button></div>`:`<div style="font-size:11px;color:#f87171;margin-bottom:8px">Required to process notes</div>`;
+    // QR modal
+    if(s.showQR){
+      h+=`<div style="background:#020617;border:1px solid #2563eb;border-radius:10px;padding:14px;margin-bottom:8px;text-align:center">`;
+      h+=`<div style="font-size:12px;color:#e2e8f0;margin-bottom:8px;font-weight:700">📱 Scan with your phone camera</div>`;
+      h+=`<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin+window.location.pathname+'#key='+API_KEY)}" style="border-radius:8px;background:#fff;padding:8px;max-width:200px">`;
+      h+=`<div style="font-size:10px;color:#64748b;margin-top:8px">Or copy this link and open on your phone:</div>`;
+      h+=`<input class="inp" readonly value="${window.location.origin+window.location.pathname}#key=${API_KEY}" onclick="this.select();document.execCommand('copy');alert('Link copied!')" style="font-size:10px;margin-top:4px;cursor:pointer">`;
+      h+=`<div style="font-size:9px;color:#475569;margin-top:6px">\u{1F512} Key stays in the URL hash — never sent to any server</div>`;
+      h+=`<button class="btn" style="background:#334155;padding:6px 14px;font-size:11px;margin-top:8px" onclick="setState({showQR:false})">Close</button>`;
+      h+=`</div>`;
+    }
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Surgeon Name</div>`;
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">OpenAI Key <span style="color:#475569">(Whisper)</span></div>`;
@@ -1339,48 +1372,33 @@ function render(){
 
   // ==== INPUT ====
   if(s.view==="input"){
-    // FIRST-RUN SETUP WIZARD — shows until both keys are set
+    // FIRST-RUN SETUP WIZARD
     const skipSetup=localStorage.getItem('opnote-skip-setup')==='1';
-    if((!API_KEY||!OD_CLIENT_ID)&&!skipSetup){
+    if(!API_KEY&&!skipSetup){
       h+=`<div style="background:linear-gradient(135deg,#0c1220,#172554);border:2px solid #2563eb;border-radius:16px;padding:20px;margin-bottom:16px">`;
       h+=`<div style="font-size:18px;font-weight:800;color:#e2e8f0;margin-bottom:4px">\u{1F680} OpNote Intelligence Setup</div>`;
-      h+=`<div style="font-size:12px;color:#64748b;margin-bottom:16px">Complete these steps to get started</div>`;
+      h+=`<div style="font-size:12px;color:#64748b;margin-bottom:16px">Just one step to get started</div>`;
       
-      // Step 1: Anthropic API Key
-      const hasAK=!!API_KEY;
-      h+=`<div style="background:${hasAK?"#052e16":"#020617"};border:1px solid ${hasAK?"#166534":"#1e293b"};border-radius:12px;padding:14px;margin-bottom:10px">`;
+      // API Key input
+      h+=`<div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:14px;margin-bottom:10px">`;
       h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">`;
-      h+=`<span style="font-size:20px">${hasAK?"\u2705":"\u0031\uFE0F\u20E3"}</span>`;
-      h+=`<span style="font-size:14px;font-weight:700;color:${hasAK?"#86efac":"#e2e8f0"}">Anthropic API Key ${hasAK?"— Done!":""}</span></div>`;
-      if(!hasAK){
-        h+=`<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.5">Get yours at <b style="color:#60a5fa">console.anthropic.com</b> → API Keys → Create Key</div>`;
-        h+=`<input id="setupApiKey" type="password" class="inp" placeholder="sk-ant-..." style="margin-bottom:6px;font-size:14px">`;
-        h+=`<button class="btn" style="background:#2563eb;width:100%;padding:12px;font-size:13px" onclick="const v=document.getElementById('setupApiKey').value.trim();if(v){API_KEY=v;localStorage.setItem('opnote-api-key',v);render();}else{alert('Paste your API key first');}">Save API Key</button>`;
-      }
-      h+=`</div>`;
-      
-      // Step 2: OneDrive Client ID
-      const hasOD=!!OD_CLIENT_ID;
-      h+=`<div style="background:${hasOD?"#052e16":"#020617"};border:1px solid ${hasOD?"#166534":"#1e293b"};border-radius:12px;padding:14px;margin-bottom:10px">`;
-      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">`;
-      h+=`<span style="font-size:20px">${hasOD?"\u2705":"\u0032\uFE0F\u20E3"}</span>`;
-      h+=`<span style="font-size:14px;font-weight:700;color:${hasOD?"#86efac":"#e2e8f0"}">OneDrive Connection ${hasOD?"— Done!":""}</span></div>`;
-      if(!hasOD){
-        h+=`<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.5">Paste the <b style="color:#60a5fa">Application (client) ID</b> from your Azure App Registration</div>`;
-        h+=`<input id="setupODKey" class="inp" placeholder="Paste Client ID here (e.g. a1b2c3d4-e5f6-...)" style="margin-bottom:6px;font-size:14px">`;
-        h+=`<button class="btn" style="background:#2563eb;width:100%;padding:12px;font-size:13px" onclick="const v=document.getElementById('setupODKey').value.trim();if(v&&v.length>10){localStorage.setItem('opnote-od-clientid',v);location.reload();}else{alert('Paste your Azure Client ID first');}">Save & Connect to OneDrive</button>`;
-      }else{
-        const connected=!!odAccount;
-        if(!connected){
-          h+=`<button class="btn" style="background:#1d4ed8;width:100%;padding:12px;font-size:13px" onclick="odLogin().then(()=>render())">Sign in to Microsoft</button>`;
-        }else{
-          h+=`<div style="font-size:12px;color:#86efac">\u2705 Signed in as ${odAccount.username}</div>`;
-        }
-      }
+      h+=`<span style="font-size:20px">\u{1F511}</span>`;
+      h+=`<span style="font-size:14px;font-weight:700;color:#e2e8f0">Anthropic API Key</span></div>`;
+      h+=`<div style="font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.5">Get yours at <b style="color:#60a5fa">console.anthropic.com</b> → API Keys → Create Key</div>`;
+      h+=`<input id="setupApiKey" type="password" class="inp" placeholder="sk-ant-..." style="margin-bottom:6px;font-size:14px">`;
+      h+=`<button class="btn" style="background:#2563eb;width:100%;padding:12px;font-size:13px" onclick="const v=document.getElementById('setupApiKey').value.trim();if(v){API_KEY=v;localStorage.setItem('opnote-api-key',v);render();}else{alert('Paste your API key first');}">Save API Key</button>`;
       h+=`</div>`;
       
       // Skip option
-      h+=`<div style="text-align:center;margin-top:8px"><button style="background:none;border:none;color:#475569;font-size:11px;text-decoration:underline" onclick="localStorage.setItem('opnote-skip-setup','1');render()">Skip for now — I'll set up later in ⚙️ Settings</button></div>`;
+      h+=`<div style="text-align:center;margin-top:8px"><button style="background:none;border:none;color:#475569;font-size:11px;text-decoration:underline" onclick="localStorage.setItem('opnote-skip-setup','1');render()">Skip for now</button></div>`;
+      h+=`</div>`;
+    }
+    
+    // OneDrive sign-in prompt (separate, always shows if not signed in and has key)
+    if(API_KEY&&OD_CLIENT_ID&&!odAccount&&!skipSetup){
+      h+=`<div style="background:#020617;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">`;
+      h+=`<span style="font-size:12px;color:#94a3b8">\u{2601}\uFE0F Connect OneDrive to sync cases</span>`;
+      h+=`<button class="btn" style="background:#1d4ed8;padding:8px 14px;font-size:11px;min-height:32px" onclick="odLogin().then(()=>render())">Sign in</button>`;
       h+=`</div>`;
     }
     h+=`<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">`;
