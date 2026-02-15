@@ -332,6 +332,8 @@ RULES:
 - NO blanks, underscores, or square brackets.
 - Assumed: ***ASSUMED*** prefix. Missing implants: ***IMPLANT*** prefix. Added: ***ADDED*** prefix.
 - NEVER mark dates or today's date as ***ASSUMED***. Only mark clinical assumptions.
+- NEVER invent patient occupation, employer, specific activities, hobbies, or lifestyle details not stated in dictation. Only assume CLINICAL details (exam findings, durations, dates).
+- NEVER fabricate specific calendar dates for treatments. Use "per patient report" instead of invented dates.
 - NEVER put billing codes/CPT/RVU in the clinical note body. Billing goes ONLY in separate billing analysis.
 - First line = clinical content. No preamble.
 - OPERATIVE NOTES must include "SURGEON: ${state.sn||"Diaz"}" and "ASSISTANTS: None" (unless specified).
@@ -345,6 +347,12 @@ MDM COMPLEXITY LINE (non-operative): first line = single sentence.
 MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NEUROMONITORING (ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
 OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NEUROMONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
 NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4h. Single level=q4h. Critical=q1h continuous. Clinic=No neurochecks.
+CLINIC NOTE RULES:
+- Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
+- Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
+- Do NOT invent patient occupation, hobbies, or specific activities not mentioned in dictation.
+- NEVER fabricate specific dates for treatments. If dates not given, say "per patient" not invented dates.
+- Focus Q:/DEFAULT: on: duration of conservative treatments, imaging date, and follow-up interval ONLY.
 CODE-SPECIFIC:
 1. REGION from UPPERMOST level: C=22600, T=22610, L=22612. 22614=each additional.
 2. SEGMENTS=vertebrae minus 1. Instrumentation: 22840(1-2), 22842(3-6), 22843(7-12), 22844(13+).
@@ -380,6 +388,17 @@ CODES:
 [CODE - Description (X.X RVU) CONFIDENCE]
 MODIFIERS: [with justification]
 ICD-10: [one per line]
+ICD-10 ACCURACY RULES:
+- Lumbar radiculopathy = M54.41 (left), M54.42 (right), M54.40 (unspecified)
+- Cervical radiculopathy = M54.12 (cervical), M54.13 (cervicothoracic)
+- Lumbar disc herniation with radiculopathy = M51.16 (lumbar), M51.17 (lumbosacral)
+- Cervical disc herniation with radiculopathy = M50.12 (mid-cervical), M50.13 (cervicothoracic)
+- Cervical myelopathy = M47.12 (with myelopathy, cervical)
+- Lumbar stenosis = M48.06 (lumbar), M48.07 (lumbosacral)
+- Cervical stenosis = M48.02 (cervical)
+- Spondylolisthesis = M43.16 (lumbar), M43.12 (cervical)
+- NEVER use M25.5xx (joint pain) for radicular leg pain. Use M79.604 (left leg) or M79.601 (right leg) only if needed.
+- NEVER use M79.2 for radiculopathy. Use M54.4x codes.
 BUNDLING: [notes]
 GAPS:
 IMPACT: HIGH/MED/LOW
@@ -638,7 +657,7 @@ function render(){
       h+=`</div></div>`;
       h+=s.editing?`<div class="card-b"><textarea class="edit-ta" oninput="state.editText=this.value">${esc(s.editText||s.noteText)}</textarea></div></div>`:`<div class="card-b" id="noteBox"></div></div>`;
       // Pre-auth link to auth tab
-      if(s.billPreauth&&s.nt==="clinic")h+=`<button class="big" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-bottom:10px" onclick="populateAuthFromNote(state.noteText)">🛡️ Run Full Auth Check →</button>`;
+      if(s.noteText.includes("PRE-AUTHORIZATION:")&&(s.nt==="clinic"||s.nt==="consult"))h+=`<button class="big" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-bottom:10px" onclick="populateAuthFromNote(state.noteText)">🛡️ Run Full Auth Check →</button>`;
       // Workup
       if(s.workup.length){h+=`<div class="card" style="border-left:4px solid #06b6d4"><div class="card-h"><span class="title">🔬 Workup</span></div><div class="card-b">`;s.workup.forEach((w,i)=>{h+=`<div class="wu-row"><input type="checkbox" ${s.wuChecked[i]?"checked":""} onchange="state.wuChecked[${i}]=this.checked;render()"><span>${esc(w)}</span></div>`;});const wuN=Object.values(s.wuChecked).filter(Boolean).length;if(wuN)h+=`<button class="big" style="background:#0891b2;padding:10px;font-size:13px;margin-top:10px" onclick="incWU()" ${isL?"disabled":""}>✅ Add ${wuN} to A/P</button>`;h+=`</div></div>`;}
       // Add Details
