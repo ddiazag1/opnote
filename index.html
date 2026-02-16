@@ -493,9 +493,9 @@ function setState(p){Object.assign(state,p);render();}
 
 // ---- EXPORT/IMPORT ----
 function exportCases(){const d=JSON.stringify(ls(SK,[]),null,2);const blob=new Blob([d],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="opnote-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(a.href);}
-function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{const imp=JSON.parse(e.target.result);if(!Array.isArray(imp)){alert("Invalid");return;}const cur=ls(SK,[]);const ids=new Set(cur.map(c=>c.id));let n=0;imp.forEach(c=>{if(c.id&&!ids.has(c.id)){cur.push(c);ids.add(c.id);n++;}});cur.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,cur);setState({cases:cur});syncPush();alert(n+" imported");}catch{alert("Import error");}};r.readAsText(f);}
+function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{const imp=JSON.parse(e.target.result);if(!Array.isArray(imp)){alert("Invalid");return;}const cur=ls(SK,[]);const ids=new Set(cur.map(c=>c.id));let n=0;imp.forEach(c=>{if(c.id&&!ids.has(c.id)){cur.push(c);ids.add(c.id);n++;}});cur.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,cur);setState({cases:cur});syncPush().catch(()=>{});alert(n+" imported");}catch{alert("Import error");}};r.readAsText(f);}
 function pickImport(){const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=()=>{if(inp.files[0])importCases(inp.files[0]);};inp.click();}
-function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});syncPush();}
+function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});syncPush().catch(()=>{});}
 
 // ---- GITHUB GIST SYNC ----
 const GIST_TOKEN_KEY="opnote-gh-token";
@@ -544,24 +544,22 @@ async function syncPull(){
     lsS(SK,merged);
     lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
     syncStatus="done";setState({cases:merged});
-    setTimeout(()=>{syncStatus="";render();},2000);
-  }catch(e){syncStatus="err:"+e.message;render();setTimeout(()=>{syncStatus="";render();},4000);}
+    setTimeout(()=>{syncStatus="";render();},3000);
+  }catch(e){syncStatus="err:"+e.message;render();}
 }
 
 async function syncPush(){
   if(!ghToken)return;
-  try{
-    const data=JSON.stringify(ls(SK,[]),null,2);
-    const body={files:{[GIST_FILE]:{content:data}}};
-    if(!gistId){
-      body.description="OpNote Intelligence case sync";body.public=false;
-      const g=await gistAPI("POST","https://api.github.com/gists",body);
-      gistId=g.id;localStorage.setItem(GIST_ID_KEY,gistId);
-    }else{
-      await gistAPI("PATCH","https://api.github.com/gists/"+gistId,body);
-    }
-    lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
-  }catch(e){console.error("Sync push failed:",e);}
+  const data=JSON.stringify(ls(SK,[]),null,2);
+  const body={files:{[GIST_FILE]:{content:data}}};
+  if(!gistId){
+    body.description="OpNote Intelligence case sync";body.public=false;
+    const g=await gistAPI("POST","https://api.github.com/gists",body);
+    gistId=g.id;localStorage.setItem(GIST_ID_KEY,gistId);
+  }else{
+    await gistAPI("PATCH","https://api.github.com/gists/"+gistId,body);
+  }
+  lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
 }
 
 async function syncFull(){
@@ -572,12 +570,12 @@ async function syncFull(){
     await syncPush();
     lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
     syncStatus="done";render();
-    setTimeout(()=>{syncStatus="";render();},2000);
-  }catch(e){syncStatus="err:"+e.message;render();setTimeout(()=>{syncStatus="";render();},4000);}
+    setTimeout(()=>{syncStatus="";render();},3000);
+  }catch(e){syncStatus="err:"+e.message;render();}
 }
 
 // Auto-sync on load
-setTimeout(()=>{if(ghToken)syncPull();},1000);
+setTimeout(()=>{if(ghToken)syncPull().catch(()=>{});},1000);
 
 // ---- MAIN PROCESS ----
 async function processCase(){
@@ -612,10 +610,10 @@ async function processCase(){
     const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:state.billRaw||"",dict:text};
     if(state.linkedTo){
       const cases=state.cases.map(c=>{if(c.id!==state.linkedTo)return c;const notes=c.notes?[...c.notes]:[{type:typeCat(c.cat)==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];notes.push(noteEntry);return{...c,notes};});
-      lsS(SK,cases);setState({cases});syncPush();
+      lsS(SK,cases);setState({cases});syncPush().catch(()=>{});
     }else{
       const entry={id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:text,note:note,billRaw:state.billRaw||"",notes:[noteEntry]};
-      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});syncPush();
+      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});syncPush().catch(()=>{});
     }
   }catch(e){setState({err:e.message,phase:""});}
 }
@@ -758,8 +756,9 @@ function render(){
       const syncCol=syncStatus==="done"?"#86efac":syncStatus.startsWith("err")?"#fca5a5":syncStatus?"#60a5fa":"#94a3b8";
       const syncTxt=syncStatus==="done"?"✅ Synced":syncStatus==="pulling"?"⬇️ Pulling...":syncStatus==="syncing"?"🔄 Syncing...":syncStatus.startsWith("err")?"❌ "+syncStatus.slice(4):lastSync?"Last sync: "+lastSync:"Not synced yet";
       h+=`<div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:1;padding:10px" onclick="syncFull()">🔄 Sync Now</button></div>`;
-      h+=`<div style="font-size:11px;color:${syncCol};margin-bottom:4px">${syncTxt}</div>`;
-      if(gistId)h+=`<div style="font-size:10px;color:#334155;word-break:break-all">Gist: ${gistId.slice(0,12)}...</div>`;
+      h+=`<div style="font-size:11px;color:${syncCol};margin-bottom:4px;word-break:break-all">${syncTxt}</div>`;
+      if(syncStatus.startsWith("err"))h+=`<div style="font-size:10px;color:#475569;margin-bottom:4px">Check: token starts with ghp_, has "gist" scope, not expired</div>`;
+      if(gistId)h+=`<div style="font-size:10px;color:#334155;word-break:break-all">Gist: ${gistId.slice(0,12)}... <button style="font-size:10px;color:#475569;background:none;border:none;text-decoration:underline" onclick="gistId='';localStorage.removeItem('${GIST_ID_KEY}');render()">reset</button></div>`;
     }
     h+=`</div>`;
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
