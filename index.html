@@ -487,7 +487,7 @@ let state={
   wk:ls("opnote-wkey",""),ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
   showSettings:false,editing:false,editText:"",_gc:{},_qc:{},
   billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:"",verifyRVU:"",
-  tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0
+  tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:""
 };
 function setState(p){Object.assign(state,p);render();}
 
@@ -496,6 +496,69 @@ function exportCases(){const d=JSON.stringify(ls(SK,[]),null,2);const blob=new B
 function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{const imp=JSON.parse(e.target.result);if(!Array.isArray(imp)){alert("Invalid");return;}const cur=ls(SK,[]);const ids=new Set(cur.map(c=>c.id));let n=0;imp.forEach(c=>{if(c.id&&!ids.has(c.id)){cur.push(c);ids.add(c.id);n++;}});cur.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,cur);setState({cases:cur});syncPush().catch(()=>{});alert(n+" imported");}catch{alert("Import error");}};r.readAsText(f);}
 function pickImport(){const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=()=>{if(inp.files[0])importCases(inp.files[0]);};inp.click();}
 function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});syncPush().catch(()=>{});}
+
+function reopenCase(caseId,noteIdx){
+  const c=state.cases.find(x=>x.id===caseId);if(!c)return;
+  const notes=c.notes||[{type:c.cat==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];
+  const ni=Math.min(noteIdx||0,notes.length-1);
+  const dn=notes[ni];
+  const sec=parseBillFull(dn.billRaw||"");
+  const bv=validateBilling(sec.codes,dn.note);
+  setState({
+    view:"output",noteText:dn.note||"",billRaw:dn.billRaw||"",
+    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,
+    gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),
+    billingValidation:bv,nt:dn.type||"operative",text:dn.dict||"",
+    convo:[{role:"user",content:"DICTATION:\n\n"+(dn.dict||"")},{role:"assistant",content:dn.note||""}],
+    _sysPrompt:getSYS()+"\nNOTE TYPE: "+(TYPES[dn.type]?.l||dn.type)+P1END,
+    phase:"done",editing:false,addend:"",questions:[],workup:[],
+    _reopenedCase:caseId,_reopenedNoteIdx:ni,
+    tStart:null,tNote:null,tCopy:null,levelUpResult:null,verifyItems:null
+  });
+}
+
+async function detailAddend(caseId,noteIdx,text,target){
+  if(!text.trim()||!API_KEY)return;
+  const c=state.cases.find(x=>x.id===caseId);if(!c)return;
+  const notes=c.notes||[{type:c.cat==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];
+  const ni=Math.min(noteIdx||0,notes.length-1);
+  const dn=notes[ni];
+  setState({phase:"addend"});
+  try{
+    const sysPrompt=getSYS()+"\nNOTE TYPE: "+(TYPES[dn.type]?.l||dn.type)+P1END;
+    const tLabels={hpi:"Add to HPI section",ap:"Add to ASSESSMENT AND PLAN",exam:"Add to EXAM section",note:"Add to appropriate section"};
+    const msgs=[{role:"user",content:"DICTATION:\n\n"+(dn.dict||"")},{role:"assistant",content:dn.note}];
+    const prompt=(tLabels[target]||tLabels.note)+". Mark ***ADDED***.\n\n"+text.trim()+INC_SUFFIX;
+    const{txt}=await callC([...msgs,{role:"user",content:prompt}],2,sysPrompt);
+    const{note:raw}=parseWorkup(txt.replace(/^[\n]*NOTE:\s*\n?/i,"").trim());
+    const updated=dedupNote(stripBilling(raw))||dn.note;
+    // Save back
+    const updatedCases=state.cases.map(cc=>{
+      if(cc.id!==caseId)return cc;
+      const updatedNotes=[...(cc.notes||notes)];
+      updatedNotes[ni]={...updatedNotes[ni],note:updated};
+      return{...cc,notes:updatedNotes};
+    });
+    lsS(SK,updatedCases);
+    setState({cases:updatedCases,selCase:updatedCases.find(x=>x.id===caseId),phase:"done",detailAddendText:""});
+    syncPush().catch(()=>{});
+  }catch(e){setState({err:"Update failed: "+e.message,phase:"done"});}
+}
+
+async function detailImageAnalyze(caseId,noteIdx,file){
+  if(!file||!API_KEY)return;
+  setState({phase:"image"});
+  try{
+    let b64,mt=file.type||"image/jpeg";
+    if(file.size>4*1024*1024){b64=await resizeImage(file);mt="image/jpeg";}
+    else{b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2048,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:mt,data:b64}},{type:"text",text:IMG_PROMPT}]}]})});
+    if(!res.ok)throw new Error("API "+res.status);
+    const data=await res.json();const txt=data.content.map(c=>c.type==="text"?c.text:"").join("");
+    setState({phase:"done",detailAddendText:(state.detailAddendText||"")+"\n"+txt});
+  }catch(e){setState({err:"Image: "+e.message,phase:"done"});}
+}
+function pickDetailImage(caseId,noteIdx){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.capture="environment";inp.onchange=()=>{if(inp.files[0])detailImageAnalyze(caseId,noteIdx,inp.files[0]);};inp.click();}
 
 // ---- GITHUB GIST SYNC ----
 const GIST_TOKEN_KEY="opnote-gh-token";
@@ -706,6 +769,24 @@ function sendToCoder(noteT,billR){
   const b=document.getElementById("coderBtn");if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}
 }
 
+function saveBackToCase(){
+  const caseId=state._reopenedCase;const ni=state._reopenedNoteIdx||0;
+  if(!caseId)return;
+  const updatedCases=state.cases.map(c=>{
+    if(c.id!==caseId)return c;
+    const notes=[...(c.notes||[])];
+    if(notes[ni]){
+      notes[ni]={...notes[ni],note:state.noteText,billRaw:state.billRaw};
+    }
+    return{...c,notes};
+  });
+  lsS(SK,updatedCases);
+  setState({cases:updatedCases});
+  syncPush().catch(()=>{});
+  const b=document.querySelector('[onclick="saveBackToCase()"]');
+  if(b){const o=b.innerHTML;b.innerHTML="✅ Saved!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}
+}
+
 // ---- NOTE RENDERING ----
 function hlM(t){return t.replace(/\*{3}ASSUMED\*{3}\s*/g,'<span class="ma" onclick="this.remove()">ASSUMED</span> ').replace(/\*{3}IMPLANT\*{3}\s*/g,'<span class="mi" onclick="this.remove()">IMPLANT</span> ').replace(/\*{3}ADDED\*{3}\s*/g,'<span class="md2">ADDED</span> ').replace(/\*\*([^*]+)\*\*/g,'<strong style="color:#f1f5f9">$1</strong>');}
 function renderNote(el,text){
@@ -732,7 +813,7 @@ function render(){
   // HEADER
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${ghToken?(syncStatus==="pulling"||syncStatus==="syncing"?" · 🔄":""):""}</div></div><div style="display:flex;gap:6px">`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
-  if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:''})">+ New</button>`;
+  if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null})">+ New</button>`;
   h+=`</div></div>`;
 
   // SETTINGS
@@ -911,6 +992,10 @@ function render(){
       h+=`<button class="big" style="background:linear-gradient(135deg,#b45309,#d97706);margin-top:8px" onclick="verifyBilling()" ${isL?"disabled":""}>🔍 Verify Billing</button>`;
       h+=`<button id="coderBtn" class="big" style="background:#334155;margin-top:8px" onclick="sendToCoder(state.noteText,state.billRaw)">📧 Copy → Coder</button>`;
     }
+    if(s._reopenedCase){
+      h+=`<button class="big" style="background:linear-gradient(135deg,#059669,#10b981);margin-top:8px" onclick="saveBackToCase()">💾 Save to Case</button>`;
+      h+=`<div style="font-size:11px;color:#475569;text-align:center;margin-top:4px">Editing saved case — changes won't persist until you save</div>`;
+    }
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
   }
 
@@ -953,8 +1038,15 @@ function render(){
       }
       h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Billing</span></div><div class="card-b" id="detailBillBox"></div></div>`;
     }
+    // Add Details
+    h+=`<div class="card" style="border-left:4px solid #6366f1"><div class="card-h"><span class="title" style="font-size:13px;color:#c7d2fe">✏️ Add Details</span><button class="btn" style="background:#334155" onclick="pickDetailImage('${c.id}',${ni})">📷</button></div><div class="card-b"><textarea class="ta" rows="3" placeholder="Add details, paste imaging, or capture photo..." oninput="state.detailAddendText=this.value">${esc(s.detailAddendText||"")}</textarea>`;
+    const daDis=!(s.detailAddendText||"").trim()||isL;
+    h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:${daDis?"#1e293b":"#6366f1"};flex:2;padding:10px;font-size:12px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'note')" ${daDis?"disabled":""}>✅ Add</button></div>`;
+    h+=`<div style="display:flex;gap:6px;margin-top:4px"><button class="btn" style="background:${daDis?"#1e293b":"#7c3aed"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'hpi')" ${daDis?"disabled":""}>📝 HPI</button><button class="btn" style="background:${daDis?"#1e293b":"#2563eb"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'ap')" ${daDis?"disabled":""}>📋 A/P</button><button class="btn" style="background:${daDis?"#1e293b":"#059669"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'exam')" ${daDis?"disabled":""}>🩺 Exam</button></div></div></div>`;
+    if(isL)h+=`<div class="ld">${ph[s.phase]||"Processing..."}</div>`;
+    if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
     // Actions
-    h+=`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="background:#1e3a5f;flex:1" onclick="setState({view:'input',text:'',linkedTo:'${c.id}',nt:'progress'})">+ Linked Note</button><button class="btn" style="background:#7f1d1d;flex:1" onclick="if(confirm('Delete?'))deleteCase('${c.id}')">🗑️ Delete</button></div>`;
+    h+=`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="background:linear-gradient(135deg,#b45309,#d97706);flex:1" onclick="reopenCase('${c.id}',${ni})">🔓 Full Edit</button><button class="btn" style="background:#1e3a5f;flex:1" onclick="setState({view:'input',text:'',linkedTo:'${c.id}',nt:'progress'})">+ Linked</button><button class="btn" style="background:#7f1d1d" onclick="if(confirm('Delete?'))deleteCase('${c.id}')">🗑️</button></div>`;
   }
 
   // ---- STATS VIEW ----
