@@ -139,6 +139,19 @@ function validateBilling(codes,noteText){
   // RVU correction
   let correctedRVU=0;
   cptMatches.forEach(c=>{const rvu=RVU_TABLE[c];if(rvu){const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;correctedRVU+=rvu*mult;}});
+  // E/M MDM FLOOR CHECK — if note recommends surgery, minimum is 99204/99214
+  const noteLC=(noteText||"").toLowerCase();
+  const recommendsSurgery=noteLC.includes("recommend")&&(noteLC.includes("surgery")||noteLC.includes("fusion")||noteLC.includes("discectomy")||noteLC.includes("laminectomy")||noteLC.includes("microdiscectomy")||noteLC.includes("kyphoplasty")||noteLC.includes("craniotomy")||noteLC.includes("decompression")||noteLC.includes("acdf")||noteLC.includes("tlif"));
+  if(recommendsSurgery){
+    const emCode=cptMatches.find(c=>c>=99200&&c<=99499);
+    if(emCode){
+      const lowCodes=[99202,99203,99211,99212,99213,99252,99253];
+      if(lowCodes.includes(emCode)){
+        fixes.push({msg:"E/M UNDERCODE: "+emCode+" but note recommends surgery → Risk=HIGH → minimum 99204/99214/99254. Decision for major surgery = HIGH risk by definition."});
+      }
+    }
+  }
+
   return{warnings,fixes,correctedRVU:correctedRVU||null};
 }
 
@@ -352,7 +365,12 @@ CLINIC NOTE RULES:
   Examples: "NEW PATIENT — MODERATE COMPLEXITY"
             "ESTABLISHED PATIENT — HIGH COMPLEXITY"
             "ESTABLISHED PATIENT — POST-OPERATIVE — MODERATE COMPLEXITY"
-  Determine NEW vs ESTABLISHED from clinicPt input. Determine complexity from MDM analysis. Include POST-OPERATIVE if visit type is postop.
+  Determine NEW vs ESTABLISHED from clinicPt input. Include POST-OPERATIVE if visit type is postop.
+  COMPLEXITY IS DETERMINED BY MDM RISK — use these EXACT rules:
+    - Note recommends ANY surgery → RISK=HIGH → at minimum MODERATE COMPLEXITY (99204/99214)
+    - Note recommends surgery AND patient has motor deficit, myelopathy, or progressive neuro deficit → HIGH COMPLEXITY (99205/99215)
+    - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
+    - Post-op routine check → LOW or MODERATE COMPLEXITY
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
 - Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
@@ -387,6 +405,40 @@ PRE-AUTHORIZATION:
 - Denial risk factors`;}
 const P1END='\n\nProduce the note. Q:/DEFAULT: first, then full note after NOTE:. All medicolegal for operative. ***ASSUMED***/***IMPLANT*** markers. PRE-AUTHORIZATION for clinic notes recommending surgery.';
 const P2=`Billing analysis. SPECIFIC, GRANULAR, MAXIMALLY AGGRESSIVE within defensible bounds.
+
+E/M MDM SCORING — MANDATORY RULES (DO NOT OVERRIDE WITH CLINICAL JUDGMENT):
+The E/M level is determined by the HIGHEST 2 of 3 MDM elements. Use this exact matrix:
+
+RISK OF COMPLICATIONS (determines RISK element):
+- HIGH: Decision for major surgery (ANY spine surgery = major), drug requiring intensive monitoring, decision for hospitalization, decision for DNR
+- MODERATE: Prescription drug management, minor surgery decision, diagnostic test with sedation
+- LOW: OTC meds, rest, PT referral
+- MINIMAL: Self-limited problem
+
+IF THE NOTE RECOMMENDS SURGERY → RISK = HIGH. ALWAYS. No exceptions. This is not debatable.
+
+NUMBER/COMPLEXITY OF PROBLEMS:
+- HIGH: Acute illness with threat to bodily function (motor deficit, myelopathy, cauda equina, progressive neuro deficit)
+- MODERATE: New problem requiring workup (new radiculopathy, new herniation), chronic illness with mild exacerbation
+- LOW: 2+ self-limited problems, 1 stable chronic illness
+
+DATA REVIEWED:
+- HIGH: Independent interpretation of imaging + discussion with external physician OR ordering tests
+- MODERATE: Independent interpretation of imaging (surgeon personally reviewing MRI = moderate)
+- LOW: Review of prior external notes/records
+- MINIMAL: Ordering a test only
+
+SCORING:
+- 99205/99215: 2 of 3 elements at HIGH
+- 99204/99214: 2 of 3 elements at MODERATE (or 1 HIGH + 1 MODERATE)
+- 99203/99213: 2 of 3 elements at LOW
+- New patient: 99202-99205. Established: 99211-99215. Consult: 99252-99255.
+
+EXAMPLES:
+- Clinic note recommending ACDF → Risk=HIGH (surgery), Problems=MODERATE (new radiculopathy), Data=MODERATE (MRI review) → 99204 minimum. If motor deficit → Problems=HIGH → 99205.
+- Follow-up stable post-op → Risk=LOW, Problems=LOW → 99213
+- New myelopathy patient with motor deficit recommending surgery → Risk=HIGH, Problems=HIGH, Data=MODERATE → 99205
+
 MANDATORY:
 1. NEVER list same CPT twice (add-ons get xN).
 2. 22633/22634 and 22612/22614+22853/22854 MUTUALLY EXCLUSIVE.
@@ -441,9 +493,91 @@ function setState(p){Object.assign(state,p);render();}
 
 // ---- EXPORT/IMPORT ----
 function exportCases(){const d=JSON.stringify(ls(SK,[]),null,2);const blob=new Blob([d],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="opnote-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(a.href);}
-function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{const imp=JSON.parse(e.target.result);if(!Array.isArray(imp)){alert("Invalid");return;}const cur=ls(SK,[]);const ids=new Set(cur.map(c=>c.id));let n=0;imp.forEach(c=>{if(c.id&&!ids.has(c.id)){cur.push(c);ids.add(c.id);n++;}});cur.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,cur);setState({cases:cur});alert(n+" imported");}catch{alert("Import error");}};r.readAsText(f);}
+function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{const imp=JSON.parse(e.target.result);if(!Array.isArray(imp)){alert("Invalid");return;}const cur=ls(SK,[]);const ids=new Set(cur.map(c=>c.id));let n=0;imp.forEach(c=>{if(c.id&&!ids.has(c.id)){cur.push(c);ids.add(c.id);n++;}});cur.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));lsS(SK,cur);setState({cases:cur});syncPush();alert(n+" imported");}catch{alert("Import error");}};r.readAsText(f);}
 function pickImport(){const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=()=>{if(inp.files[0])importCases(inp.files[0]);};inp.click();}
-function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});}
+function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});syncPush();}
+
+// ---- GITHUB GIST SYNC ----
+const GIST_TOKEN_KEY="opnote-gh-token";
+const GIST_ID_KEY="opnote-gist-id";
+const GIST_FILE="opnote-cases.json";
+let ghToken=localStorage.getItem(GIST_TOKEN_KEY)||"";
+let gistId=localStorage.getItem(GIST_ID_KEY)||"";
+let syncStatus="";let lastSync=localStorage.getItem("opnote-last-sync")||"";
+
+async function gistAPI(method,url,body){
+  const opts={method,headers:{"Authorization":"Bearer "+ghToken,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}};
+  if(body){opts.headers["Content-Type"]="application/json";opts.body=JSON.stringify(body);}
+  const r=await fetch(url,opts);
+  if(!r.ok){const t=await r.text();throw new Error("GitHub "+r.status+": "+t.slice(0,200));}
+  return r.json();
+}
+
+function mergeCases(local,remote){
+  const map=new Map();
+  remote.forEach(c=>{if(c.id)map.set(c.id,c);});
+  local.forEach(c=>{if(!c.id)return;const existing=map.get(c.id);if(!existing){map.set(c.id,c);}else{
+    const lt=c.ts||c.date||"";const rt=existing.ts||existing.date||"";
+    const lNotes=(c.notes||[]).length;const rNotes=(existing.notes||[]).length;
+    if(lNotes>rNotes||lt>rt)map.set(c.id,c);
+  }});
+  return[...map.values()].sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));
+}
+
+async function syncPull(){
+  if(!ghToken)return;
+  syncStatus="pulling";render();
+  try{
+    if(!gistId){
+      const gists=await gistAPI("GET","https://api.github.com/gists?per_page=100");
+      const found=gists.find(g=>g.files&&g.files[GIST_FILE]);
+      if(found){gistId=found.id;localStorage.setItem(GIST_ID_KEY,gistId);}
+      else{syncStatus="";render();return;}
+    }
+    const g=await gistAPI("GET","https://api.github.com/gists/"+gistId);
+    const raw=g.files?.[GIST_FILE]?.content;
+    if(!raw){syncStatus="";render();return;}
+    const remote=JSON.parse(raw);
+    if(!Array.isArray(remote)){syncStatus="";render();return;}
+    const local=ls(SK,[]);
+    const merged=mergeCases(local,remote);
+    lsS(SK,merged);
+    lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
+    syncStatus="done";setState({cases:merged});
+    setTimeout(()=>{syncStatus="";render();},2000);
+  }catch(e){syncStatus="err:"+e.message;render();setTimeout(()=>{syncStatus="";render();},4000);}
+}
+
+async function syncPush(){
+  if(!ghToken)return;
+  try{
+    const data=JSON.stringify(ls(SK,[]),null,2);
+    const body={files:{[GIST_FILE]:{content:data}}};
+    if(!gistId){
+      body.description="OpNote Intelligence case sync";body.public=false;
+      const g=await gistAPI("POST","https://api.github.com/gists",body);
+      gistId=g.id;localStorage.setItem(GIST_ID_KEY,gistId);
+    }else{
+      await gistAPI("PATCH","https://api.github.com/gists/"+gistId,body);
+    }
+    lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
+  }catch(e){console.error("Sync push failed:",e);}
+}
+
+async function syncFull(){
+  if(!ghToken){alert("Add GitHub token in Settings.");return;}
+  syncStatus="syncing";render();
+  try{
+    await syncPull();
+    await syncPush();
+    lastSync=new Date().toLocaleTimeString();localStorage.setItem("opnote-last-sync",lastSync);
+    syncStatus="done";render();
+    setTimeout(()=>{syncStatus="";render();},2000);
+  }catch(e){syncStatus="err:"+e.message;render();setTimeout(()=>{syncStatus="";render();},4000);}
+}
+
+// Auto-sync on load
+setTimeout(()=>{if(ghToken)syncPull();},1000);
 
 // ---- MAIN PROCESS ----
 async function processCase(){
@@ -478,10 +612,10 @@ async function processCase(){
     const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:state.billRaw||"",dict:text};
     if(state.linkedTo){
       const cases=state.cases.map(c=>{if(c.id!==state.linkedTo)return c;const notes=c.notes?[...c.notes]:[{type:typeCat(c.cat)==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];notes.push(noteEntry);return{...c,notes};});
-      lsS(SK,cases);setState({cases});
+      lsS(SK,cases);setState({cases});syncPush();
     }else{
       const entry={id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:text,note:note,billRaw:state.billRaw||"",notes:[noteEntry]};
-      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});
+      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});syncPush();
     }
   }catch(e){setState({err:e.message,phase:""});}
 }
@@ -598,7 +732,7 @@ function render(){
   let h="";
 
   // HEADER
-  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}</div></div><div style="display:flex;gap:6px">`;
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${ghToken?(syncStatus==="pulling"||syncStatus==="syncing"?" · 🔄":""):""}</div></div><div style="display:flex;gap:6px">`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:''})">+ New</button>`;
   h+=`</div></div>`;
@@ -614,8 +748,21 @@ function render(){
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">OpenAI Key (Whisper)</div>`;
     h+=`<input type="password" class="inp" value="${esc(s.wk)}" placeholder="sk-..." onchange="state.wk=this.value;lsS('opnote-wkey',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
-    h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:8px">`;
-    h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
+    h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:12px">`;
+    h+=`<div style="border-top:1px solid #1e293b;padding-top:12px;margin-top:4px">`;
+    h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:8px">☁️ CLOUD SYNC</div>`;
+    h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">GitHub Token <span style="color:#475569">(gist scope only)</span></div>`;
+    h+=`<input type="password" class="inp" value="${esc(ghToken)}" placeholder="ghp_..." onchange="ghToken=this.value;localStorage.setItem('${GIST_TOKEN_KEY}',this.value);render()" style="margin-bottom:4px">`;
+    h+=`<div style="font-size:10px;color:#475569;margin-bottom:8px">GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic) → Generate → check "gist" only</div>`;
+    if(ghToken){
+      const syncCol=syncStatus==="done"?"#86efac":syncStatus.startsWith("err")?"#fca5a5":syncStatus?"#60a5fa":"#94a3b8";
+      const syncTxt=syncStatus==="done"?"✅ Synced":syncStatus==="pulling"?"⬇️ Pulling...":syncStatus==="syncing"?"🔄 Syncing...":syncStatus.startsWith("err")?"❌ "+syncStatus.slice(4):lastSync?"Last sync: "+lastSync:"Not synced yet";
+      h+=`<div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:1;padding:10px" onclick="syncFull()">🔄 Sync Now</button></div>`;
+      h+=`<div style="font-size:11px;color:${syncCol};margin-bottom:4px">${syncTxt}</div>`;
+      if(gistId)h+=`<div style="font-size:10px;color:#334155;word-break:break-all">Gist: ${gistId.slice(0,12)}...</div>`;
+    }
+    h+=`</div>`;
+    h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
     h+=`</div>`;
   }
 
