@@ -100,6 +100,87 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 // ---- CONFIG ----
 let API_KEY=localStorage.getItem("opnote-api-key")||"";
 (function(){const h=window.location.hash;if(h.startsWith("#key=")){const k=decodeURIComponent(h.slice(5));if(k.startsWith("sk-ant-")){API_KEY=k;localStorage.setItem("opnote-api-key",k);window.history.replaceState(null,"",window.location.pathname);setTimeout(()=>alert("API key saved!"),500);}}})();
+
+// ---- PIN VAULT (AES-GCM via Web Crypto) ----
+const VAULT_KEY="opnote-vault";
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
+let vaultLocked=false;
+let pinErr="";
+
+// Determine lock state: embedded vault OR localStorage vault
+if(EMBEDDED_VAULT && !API_KEY){
+  // Embedded vault in HTML — use it if no keys loaded yet
+  try{localStorage.setItem(VAULT_KEY,EMBEDDED_VAULT);}catch(e){}
+  vaultLocked=true;API_KEY="";
+}else if(localStorage.getItem(VAULT_KEY) && !API_KEY){
+  vaultLocked=true;API_KEY="";
+}else if(localStorage.getItem(VAULT_KEY)){
+  // Vault exists but keys already loaded from previous unlock
+  vaultLocked=false;
+}
+
+async function deriveKey(pin,salt){
+  const enc=new TextEncoder();
+  const keyMaterial=await crypto.subtle.importKey("raw",enc.encode(pin),{name:"PBKDF2"},false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},keyMaterial,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+
+async function encryptVault(pin){
+  const data=JSON.stringify({ak:API_KEY,wk:state?.wk||localStorage.getItem("opnote-wkey")||"",gt:ghToken||localStorage.getItem("opnote-gh-token")||""});
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveKey(pin,salt);
+  const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(data));
+  const bundle={s:btoa(String.fromCharCode(...salt)),i:btoa(String.fromCharCode(...iv)),d:btoa(String.fromCharCode(...new Uint8Array(ct)))};
+  localStorage.setItem(VAULT_KEY,JSON.stringify(bundle));
+}
+
+async function decryptVault(pin){
+  const bundle=JSON.parse(localStorage.getItem(VAULT_KEY));
+  const salt=Uint8Array.from(atob(bundle.s),c=>c.charCodeAt(0));
+  const iv=Uint8Array.from(atob(bundle.i),c=>c.charCodeAt(0));
+  const ct=Uint8Array.from(atob(bundle.d),c=>c.charCodeAt(0));
+  const key=await deriveKey(pin,salt);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+async function unlockVault(pin){
+  pinErr="";
+  try{
+    const keys=await decryptVault(pin);
+    API_KEY=keys.ak||"";localStorage.setItem("opnote-api-key",API_KEY);
+    if(keys.wk){lsS("opnote-wkey",keys.wk);state.wk=keys.wk;}
+    if(keys.gt){localStorage.setItem("opnote-gh-token",keys.gt);ghToken=keys.gt;}
+    vaultLocked=false;render();
+    setTimeout(()=>{if(ghToken)syncPull().catch(()=>{});},1000);
+  }catch(e){pinErr="Wrong PIN";render();}
+}
+
+async function setVaultPIN(pin){
+  if(pin.length<3){pinErr="PIN must be 3+ characters";render();return;}
+  await encryptVault(pin);
+  // Show the embeddable blob
+  const blob=localStorage.getItem(VAULT_KEY);
+  state._vaultBlob=blob;
+  // Clear raw keys from localStorage — vault is now the source of truth
+  localStorage.removeItem("opnote-api-key");
+  localStorage.removeItem("opnote-wkey");
+  localStorage.removeItem("opnote-gh-token");
+  vaultLocked=false;pinErr="";render();
+}
+
+function lockVault(){
+  API_KEY="";localStorage.removeItem("opnote-api-key");
+  localStorage.removeItem("opnote-wkey");state.wk="";
+  localStorage.removeItem("opnote-gh-token");ghToken="";
+  vaultLocked=true;pinErr="";render();
+}
+
+function removeVault(){
+  localStorage.removeItem(VAULT_KEY);
+  vaultLocked=false;pinErr="";render();
+}
 const TODAY=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});
 const SK="opnote-cases";
 function ls(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
@@ -185,21 +266,31 @@ async function runAuthCheck(){
       if(procData[payer])policyContext+="CRITERIA:\n"+JSON.stringify(procData[payer],null,2)+"\n\n";
       if(globalRules[payer])policyContext+="GLOBAL:\n"+JSON.stringify(globalRules[payer],null,2)+"\n\n";
     }
-    let clinicalData="CLINICAL DATA:\n";
-    if(authState.mriText)clinicalData+="\nMRI/IMAGING:\n"+authState.mriText+"\n";
-    if(authState.medsText)clinicalData+="\nMEDICATIONS:\n"+authState.medsText+"\n";
-    if(authState.ptText)clinicalData+="\nPT/CONSERVATIVE TX:\n"+authState.ptText+"\n";
-    if(authState.labsText)clinicalData+="\nLABS:\n"+authState.labsText+"\n";
-    if(authState.priorText)clinicalData+="\nPRIOR PROCEDURES:\n"+authState.priorText+"\n";
+    let clinicalData="\n=== CLINICAL DATA (organized by source) ===\n";
+    if(authState.mriText)clinicalData+="\n--- MRI/IMAGING (radiology findings ONLY) ---\n"+authState.mriText+"\n";
+    if(authState.medsText)clinicalData+="\n--- MEDICATIONS (drug history) ---\n"+authState.medsText+"\n";
+    if(authState.ptText)clinicalData+="\n--- PT/CONSERVATIVE TREATMENT (therapy records) ---\n"+authState.ptText+"\n";
+    if(authState.labsText)clinicalData+="\n--- LABS (laboratory results) ---\n"+authState.labsText+"\n";
+    if(authState.priorText)clinicalData+="\n--- PRIOR PROCEDURES (surgical history) ---\n"+authState.priorText+"\n";
+    clinicalData+="\n=== END CLINICAL DATA ===\n";
     const sys=`You are a prior authorization specialist for neurosurgery with EXACT payer policy criteria.
 Compare clinical data against SPECIFIC payer requirements.
+
+CRITICAL DATA ZONE RULES:
+- The clinical data below is organized into LABELED SECTIONS: MRI/IMAGING, MEDICATIONS, PT/CONSERVATIVE TX, LABS, PRIOR PROCEDURES.
+- ONLY use data from the appropriate section for each criterion check.
+- MRI/IMAGING section = ONLY radiology findings. If this section contains exam findings (ROS, physical exam, neurological exam, vital signs), IGNORE them — they are not imaging data.
+- Do NOT cite Review of Systems, physical exam findings, or clinical symptoms as "imaging findings."
+- If a section is empty or missing, mark that criterion as RED (not documented), do NOT fabricate or pull from wrong section.
+- Imaging findings = what the radiologist reported (disc herniation, stenosis, compression, signal change, measurements).
+- Clinical findings = what the surgeon found on exam (weakness, reflex changes, Hoffmann, gait). These support the case but are NOT imaging.
 
 RESPONSE FORMAT (use EXACTLY):
 
 PATHWAY: [which coverage pathway and why]
 
 CHECKLIST:
-GREEN: [requirement] — [evidence from clinical data]
+GREEN: [requirement] — [evidence from clinical data with source section]
 YELLOW: [requirement] — [needs attention/clarification]
 RED: [requirement] — [missing or not documented]
 
@@ -241,9 +332,44 @@ Sincerely,
 function resetAuth(){authState={payer:"",procedure:"",mriText:"",medsText:"",ptText:"",labsText:"",priorText:"",results:null,letter:"",phase:"",err:null};render();}
 function populateAuthFromNote(noteText){
   if(!noteText)return;
-  const imgMatch=noteText.match(/(?:imaging|MRI|CT|findings)[^:]*:\s*([^\n]+)/i);
-  if(imgMatch)authState.mriText=imgMatch[1].trim();
-  const procMatch=noteText.match(/(?:recommended procedure|procedure)[^:]*:\s*([^\n]+)/i);
+  const nt=noteText;
+  // Extract imaging section (everything between IMAGING: and next major header)
+  const imgHeaders=/(?:IMAGING|RADIOLOGY|MRI|CT SCAN|DIAGNOSTIC STUDIES)[^:]*:/i;
+  const nextHeaders=/\n(?:DIFFERENTIAL|ASSESSMENT|PLAN|DISPOSITION|PRECAUTIONS|PRE-AUTH|BILLING|REVIEW OF SYSTEMS|ROS|PHYSICAL EXAM|EXAM|SOCIAL HISTORY|FAMILY HISTORY|PAST MEDICAL|PAST SURGICAL|ALLERGIES|MEDICATIONS|WORKUP)/i;
+  const imgM=nt.match(imgHeaders);
+  if(imgM){
+    const start=imgM.index;
+    const rest=nt.slice(start+imgM[0].length);
+    const end=rest.search(nextHeaders);
+    authState.mriText=(end>0?rest.slice(0,end):rest).trim();
+  }
+  // Extract medication history
+  const medHeaders=/(?:MEDICATIONS|MEDICATION HISTORY|CURRENT MEDICATIONS|MED LIST)[^:]*:/i;
+  const medM=nt.match(medHeaders);
+  if(medM){
+    const start=medM.index;
+    const rest=nt.slice(start+medM[0].length);
+    const end=rest.search(nextHeaders);
+    authState.medsText=(end>0?rest.slice(0,end):rest).trim();
+  }
+  // Extract conservative treatment / PT from HPI or dedicated section
+  const ptPhrases=[];
+  if(/physical therapy|PT\b/i.test(nt))ptPhrases.push("Physical therapy documented in note");
+  const ptDuration=nt.match(/(\d+)\s*(?:weeks?|months?)\s*(?:of\s*)?(?:physical therapy|PT|conservative)/i);
+  if(ptDuration)ptPhrases.push(ptDuration[0]);
+  const meds=nt.match(/(?:failed|tried|completed|taking)\s+[\w\s,]+(?:gabapentin|meloxicam|naproxen|ibuprofen|prednisone|NSAIDs|muscle relaxants|pregabalin|cyclobenzaprine|tizanidine|duloxetine|methocarbamol)/gi);
+  if(meds)ptPhrases.push(...meds.map(m=>m.trim()));
+  const injections=nt.match(/(?:epidural|ESI|injection|nerve root block|facet)[^.;\n]*/gi);
+  if(injections)ptPhrases.push(...injections.map(m=>m.trim()));
+  if(ptPhrases.length)authState.ptText=ptPhrases.join("\n");
+  // Extract labs if mentioned
+  const labM=nt.match(/(?:cotinine|nicotine|lab|hemoglobin|HbA1c)[^.;\n]*/gi);
+  if(labM)authState.labsText=labM.join("\n");
+  // Extract prior procedures
+  const priorM=nt.match(/(?:prior surgery|previous surgery|surgical history|prior procedure|revision|prior decompression|prior fusion)[^.;\n]*/gi);
+  if(priorM)authState.priorText=priorM.join("\n");
+  // Procedure detection
+  const procMatch=nt.match(/(?:recommended procedure|procedure|recommend(?:ing)?)[^:]*:?\s*([^\n]+)/i);
   if(procMatch){
     const pt=procMatch[1].toLowerCase();
     if(pt.includes("acdf")&&pt.includes("3"))authState.procedure="acdf_3_level";
@@ -299,7 +425,7 @@ async function analyzeImage(file,target){
   if(txt){if(target==="addend")state.addend=(state.addend?state.addend+"\n\n":"")+txt;else state.text=(state.text?state.text+"\n\n":"")+txt;}
   setState({phase:state.noteText?"done":""});}catch(e){setState({err:"Image: "+e.message,phase:state.noteText?"done":""});}
 }
-function pickImage(target){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])analyzeImage(inp.files[0],target||"text");};document.body.appendChild(inp);inp.click();setTimeout(()=>inp.remove(),60000);}
+function pickImage(target){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])analyzeImage(inp.files[0],target||"text");};inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";document.body.appendChild(inp);setTimeout(()=>{inp.click();},100);setTimeout(()=>{try{inp.remove();}catch{}},120000);}
 
 // ---- HELPERS ----
 function stripAll(t){return(t||"").replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"").replace(/\*\*([^*]+)\*\*/g,"$1").replace(/#{1,4}\s*/g,"").replace(/---+/g,"").replace(/\n{3,}/g,"\n\n");}
@@ -372,6 +498,18 @@ CLINIC NOTE RULES:
     - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
     - Post-op routine check → LOW or MODERATE COMPLEXITY
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
+- MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
+  If the input contains exam findings, use them. If input has NO physical exam data, generate a RELEVANT exam scaffold with ***EXAM NEEDED*** markers:
+  PHYSICAL EXAMINATION:
+    General: ***EXAM NEEDED — alert/oriented, appearance***
+    Spine: ***EXAM NEEDED — inspection, palpation, ROM***
+  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint:
+    - Lumbar complaint → Motor: ***EXAM NEEDED — L2-S1 myotomes bilaterally***, Sensory: ***EXAM NEEDED — dermatomes***, Reflexes: ***EXAM NEEDED — patellar, Achilles***, SLR: ***EXAM NEEDED***
+    - Cervical complaint → Motor: ***EXAM NEEDED — C5-T1 grip/deltoid/biceps/triceps***, Reflexes: ***EXAM NEEDED — biceps, triceps, brachioradialis***, Hoffmann: ***EXAM NEEDED***, Spurling: ***EXAM NEEDED***
+    - Bowel/bladder symptoms or cauda equina concern → MANDATORY: Rectal tone: ***EXAM NEEDED***, Perianal sensation: ***EXAM NEEDED***, Post-void residual: ***EXAM NEEDED***
+    - Myelopathy concern → Gait: ***EXAM NEEDED***, Hoffmann: ***EXAM NEEDED***, Babinski: ***EXAM NEEDED***, Clonus: ***EXAM NEEDED***
+  The Q: section should ask about MISSING exam findings BEFORE asking about other details.
+- TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
 - Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
 - Do NOT invent patient occupation, hobbies, or specific activities not mentioned in dictation.
@@ -463,6 +601,12 @@ ICD-10 ACCURACY RULES:
 - NEVER use M79.2 for radiculopathy. Use M54.4x codes.
 BUNDLING: [notes]
 GAPS:
+CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY for clinic/consult notes):
+- If note has NO PHYSICAL EXAMINATION section → ALWAYS flag as HIGH gap
+- If note has PE but NO neurological exam (motor, sensory, reflexes) → flag as HIGH gap for spine patients
+- If note has bowel/bladder complaints + NO rectal tone/perianal exam → flag as RED FLAG for cauda equina screening
+- If ***EXAM NEEDED*** markers present → flag each as HIGH gap with incorporate language
+- These PE gaps take PRIORITY over billing optimization gaps
 IMPACT: HIGH/MED/LOW
 ISSUE: [missing] — [CPT] ([+X.X RVU])
 LANGUAGE: [exact text]
@@ -497,7 +641,7 @@ function importCases(f){if(!f)return;const r=new FileReader();r.onload=e=>{try{c
 function pickImport(){const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=()=>{if(inp.files[0])importCases(inp.files[0]);};inp.click();}
 
 // ---- QUICK CAPTURE (phone → draft → desktop finishes) ----
-let captureQueue=[];let captureTexts=[];let captureActive=false;
+let captureQueue=[];let captureActive=false;let captureErr="";let lastDraftId=null;
 
 async function ocrImage(file){
   let b64,mt=file.type||"image/jpeg";
@@ -510,51 +654,73 @@ async function ocrImage(file){
 
 function quickCapture(){
   if(!API_KEY){setState({err:"Add API key in Settings."});return;}
-  captureTexts=[];captureActive=true;setState({phase:""});
-  addCapturePage();
+  captureErr="";lastDraftId=null;
+  const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;
+  inp.onchange=async()=>{
+    if(!inp.files||!inp.files.length)return;
+    setState({phase:"image",err:null});
+    captureActive=true;render();
+    try{
+      const texts=[];
+      for(let i=0;i<inp.files.length;i++){
+        captureErr="Analyzing "+(i+1)+" of "+inp.files.length+"...";render();
+        const txt=await ocrImage(inp.files[i]);
+        if(txt)texts.push(txt);
+      }
+      if(!texts.length)throw new Error("No text extracted from image(s).");
+      const combined=texts.join("\n\n---PAGE BREAK---\n\n");
+      const txtLow=combined.toLowerCase();
+      let label="📸 Capture";
+      if(txtLow.includes("mri")||txtLow.includes("impression")||txtLow.includes("findings"))label="📸 MRI/Imaging";
+      else if(txtLow.includes("physical therapy")||txtLow.includes("pt note"))label="📸 PT Notes";
+      else if(txtLow.includes("medication")||txtLow.includes("prescription"))label="📸 Medications";
+      else if(txtLow.includes("lab")||txtLow.includes("result")||txtLow.includes("cotinine"))label="📸 Lab Results";
+      if(texts.length>1)label+=" ("+texts.length+" pages)";
+      const draftId=Date.now().toString(36)+Math.random().toString(36).slice(2,4);
+      const draft={
+        id:draftId,
+        ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),
+        date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),
+        proc:label,cat:"Draft",draft:true,
+        capturedText:combined,dict:"",note:"",billRaw:"",notes:[]
+      };
+      const cases=[draft,...state.cases].slice(0,200);
+      lsS(SK,cases);
+      lastDraftId=draftId;captureActive=false;captureErr="";
+      setState({cases,phase:"",err:null,view:"cases",caseTab:"all"});
+      syncPush().catch(()=>{});
+    }catch(e){captureActive=false;captureErr="";setState({err:"Capture: "+e.message,phase:""});}
+  };
+  inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";
+  document.body.appendChild(inp);
+  setTimeout(()=>{inp.click();},100);
+  setTimeout(()=>{try{inp.remove();}catch{}},120000);
 }
 
-function addCapturePage(){
-  const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
+function addPageToDraft(draftId){
+  const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;
   inp.onchange=async()=>{
-    if(!inp.files[0]){if(!captureTexts.length){captureActive=false;render();}return;}
+    if(!inp.files||!inp.files.length)return;
     setState({phase:"image",err:null});
     try{
-      const txt=await ocrImage(inp.files[0]);
-      if(txt)captureTexts.push(txt);
-      setState({phase:""});
-      // Show continue/done prompt
-      render();
-    }catch(e){setState({err:"Capture: "+e.message,phase:""});}
+      const texts=[];
+      for(let i=0;i<inp.files.length;i++){
+        const txt=await ocrImage(inp.files[i]);
+        if(txt)texts.push(txt);
+      }
+      if(!texts.length)throw new Error("No text extracted.");
+      const cases=state.cases.map(c=>{
+        if(c.id!==draftId)return c;
+        return{...c,capturedText:(c.capturedText||"")+"\n\n---PAGE BREAK---\n\n"+texts.join("\n\n---PAGE BREAK---\n\n"),proc:c.proc.replace(/\(\d+ pages?\)/,"")+"("+((c.capturedText||"").split("---PAGE BREAK---").length+texts.length)+" pages)"};
+      });
+      lsS(SK,cases);setState({cases,phase:""});syncPush().catch(()=>{});
+    }catch(e){setState({err:"Add page: "+e.message,phase:""});}
   };
-  document.body.appendChild(inp);inp.click();setTimeout(()=>inp.remove(),60000);
+  inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";
+  document.body.appendChild(inp);
+  setTimeout(()=>{inp.click();},100);
+  setTimeout(()=>{try{inp.remove();}catch{}},120000);
 }
-
-function finishCapture(){
-  if(!captureTexts.length){captureActive=false;render();return;}
-  const combined=captureTexts.join("\n\n---PAGE BREAK---\n\n");
-  const txtLow=combined.toLowerCase();
-  let label="📸 Capture ("+captureTexts.length+" pg)";
-  if(txtLow.includes("mri")||txtLow.includes("impression")||txtLow.includes("findings"))label="📸 MRI/Imaging";
-  else if(txtLow.includes("physical therapy")||txtLow.includes("pt note"))label="📸 PT Notes";
-  else if(txtLow.includes("medication")||txtLow.includes("prescription"))label="📸 Medications";
-  else if(txtLow.includes("lab")||txtLow.includes("result")||txtLow.includes("cotinine"))label="📸 Lab Results";
-  if(captureTexts.length>1)label+=" ("+captureTexts.length+" pages)";
-  const draft={
-    id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),
-    ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),
-    date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),
-    proc:label,cat:"Draft",draft:true,
-    capturedText:combined,dict:"",note:"",billRaw:"",notes:[]
-  };
-  const cases=[draft,...state.cases].slice(0,200);
-  lsS(SK,cases);
-  captureTexts=[];captureActive=false;
-  setState({cases,phase:"",err:null});
-  syncPush().catch(()=>{});
-}
-
-function cancelCapture(){captureTexts=[];captureActive=false;render();}
 
 function openDraft(caseId){
   const c=state.cases.find(x=>x.id===caseId);if(!c||!c.draft)return;
@@ -638,7 +804,7 @@ async function detailImageAnalyze(caseId,noteIdx,file){
     setState({phase:"done",detailAddendText:(state.detailAddendText||"")+"\n"+txt});
   }catch(e){setState({err:"Image: "+e.message,phase:"done"});}
 }
-function pickDetailImage(caseId,noteIdx){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])detailImageAnalyze(caseId,noteIdx,inp.files[0]);};document.body.appendChild(inp);inp.click();setTimeout(()=>inp.remove(),60000);}
+function pickDetailImage(caseId,noteIdx){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])detailImageAnalyze(caseId,noteIdx,inp.files[0]);};inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";document.body.appendChild(inp);setTimeout(()=>{inp.click();},100);setTimeout(()=>{try{inp.remove();}catch{}},120000);}
 
 // ---- GITHUB GIST SYNC ----
 const GIST_TOKEN_KEY="opnote-gh-token";
@@ -886,15 +1052,54 @@ function renderNote(el,text){
 // ============================================================
 function render(){
   const s=state;const app=document.getElementById("app");
+
+  // PIN LOCK SCREEN
+  if(vaultLocked){
+    let h=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center">`;
+    h+=`<div style="font-size:32px;margin-bottom:12px">🔐</div>`;
+    h+=`<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:4px">OpNote Intelligence</div>`;
+    h+=`<div style="font-size:12px;color:#475569;margin-bottom:24px">v10.0 · Enter PIN to unlock</div>`;
+    h+=`<input id="pin-input" type="password" inputmode="numeric" class="inp" placeholder="Enter PIN" style="width:200px;text-align:center;font-size:18px;letter-spacing:6px;margin-bottom:12px" onkeydown="if(event.key==='Enter')unlockVault(this.value)">`;
+    h+=`<button class="btn" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:12px 32px;font-size:14px;font-weight:700" onclick="unlockVault(document.getElementById('pin-input').value)">Unlock</button>`;
+    if(pinErr)h+=`<div style="color:#fca5a5;font-size:13px;margin-top:12px;font-weight:600">${esc(pinErr)}</div>`;
+    h+=`<button style="background:none;border:none;color:#475569;font-size:11px;margin-top:20px;cursor:pointer;text-decoration:underline" onclick="if(confirm('This will erase your saved PIN and keys. You will need to re-enter all API keys manually.')){removeVault();}">Remove PIN & enter keys manually</button>`;
+    h+=`</div>`;
+    app.innerHTML=h;
+    setTimeout(()=>{const pi=document.getElementById("pin-input");if(pi)pi.focus();},50);
+    return;
+  }
+
   const hasWK=!!s.wk;const isL=s.phase&&s.phase!=="done"&&s.phase!=="";
+
+  // Key re-sync: ensure API keys match localStorage (catches vault unlock propagation issues)
+  if(!vaultLocked){
+    const lsKey=localStorage.getItem("opnote-api-key")||"";
+    if(lsKey&&!API_KEY)API_KEY=lsKey;
+    const lsWK=localStorage.getItem("opnote-wkey")||"";
+    if(lsWK&&!s.wk){try{s.wk=JSON.parse(lsWK);}catch{s.wk=lsWK;}}
+  }
+
+  // Phase-stuck recovery: if loading for >90s, auto-clear
+  if(isL){
+    if(!state._phaseStart)state._phaseStart=Date.now();
+    else if(Date.now()-state._phaseStart>90000){state.phase="";state._phaseStart=null;}
+  }else{state._phaseStart=null;}
   const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check..."};
   let h="";
 
   // HEADER
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${ghToken?(syncStatus==="pulling"||syncStatus==="syncing"?" · 🔄":""):""}</div></div><div style="display:flex;gap:6px">`;
+  if(localStorage.getItem(VAULT_KEY))h+=`<button class="btn" style="background:#334155" onclick="lockVault()" title="Lock">🔒</button>`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
-  if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
+  if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
   h+=`</div></div>`;
+
+  // API KEY MISSING BANNER
+  if(!API_KEY && !vaultLocked){
+    h+=`<div style="background:#7f1d1d;border:1px solid #dc2626;border-radius:10px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="setState({showSettings:true})">`;
+    h+=`<span style="font-size:18px">⚠️</span><div><div style="font-size:13px;font-weight:700;color:#fca5a5">API Key Required</div><div style="font-size:11px;color:#fca5a5aa">Tap here to open Settings and add your Anthropic API key</div></div>`;
+    h+=`</div>`;
+  }
 
   // SETTINGS
   if(s.showSettings){
@@ -923,6 +1128,32 @@ function render(){
     }
     h+=`</div>`;
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
+    // PIN VAULT
+    h+=`<div style="border-top:1px solid #1e293b;padding-top:12px;margin-top:12px">`;
+    h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:8px">🔐 PIN LOCK</div>`;
+    if(localStorage.getItem(VAULT_KEY)){
+      h+=`<div style="font-size:11px;color:#86efac;margin-bottom:8px">✅ PIN is set — keys auto-load on unlock</div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:8px">`;
+      h+=`<button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="const p=prompt('Enter new PIN (3+ chars):');if(p)setVaultPIN(p)">Change PIN</button>`;
+      h+=`<button class="btn" style="background:#7f1d1d;flex:1;padding:8px;font-size:11px" onclick="if(confirm('Remove PIN? Keys stay in settings until you clear them.')){removeVault();}">Remove PIN</button>`;
+      h+=`</div>`;
+      // Show embed blob button
+      h+=`<button class="btn" style="background:#334155;width:100%;padding:8px;font-size:11px;margin-bottom:4px" onclick="state._vaultBlob=localStorage.getItem('${VAULT_KEY}');render()">📋 Show Embed Code</button>`;
+    }else{
+      h+=`<div style="font-size:11px;color:#475569;margin-bottom:8px">Set a PIN to auto-load all keys on any device. Enter your keys above first, then set PIN.</div>`;
+      h+=`<button class="btn" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);width:100%;padding:10px;font-size:12px;font-weight:700" onclick="const p=prompt('Choose a PIN (3+ chars):');if(p)setVaultPIN(p)" ${API_KEY?"":"disabled"}>🔐 Set PIN</button>`;
+      if(!API_KEY)h+=`<div style="font-size:10px;color:#f87171;margin-top:4px">Add API key first</div>`;
+    }
+    if(state._vaultBlob){
+      h+=`<div style="background:#020617;border:2px solid #2563eb;border-radius:8px;padding:10px;margin-top:8px">`;
+      h+=`<div style="font-size:11px;font-weight:700;color:#60a5fa;margin-bottom:6px">📦 Embed Code — paste into HTML</div>`;
+      h+=`<div style="font-size:10px;color:#94a3b8;margin-bottom:6px">In index.html, find <code>EMBEDDED_VAULT=""</code> and replace with:</div>`;
+      h+=`<textarea id="vaultBlobTA" readonly style="width:100%;height:60px;background:#0f172a;color:#86efac;border:1px solid #1e293b;border-radius:6px;font-family:monospace;font-size:10px;padding:6px;resize:none">const EMBEDDED_VAULT='${state._vaultBlob.replace(/'/g,"\\'")}';</textarea>`;
+      h+=`<button class="btn" style="background:#059669;width:100%;padding:8px;font-size:11px;margin-top:6px" onclick="navigator.clipboard.writeText(document.getElementById('vaultBlobTA').value);this.textContent='✅ Copied!'">📋 Copy Embed Code</button>`;
+      h+=`<div style="font-size:10px;color:#475569;margin-top:4px">After pasting, commit & deploy. Any device can then unlock with your PIN.</div>`;
+      h+=`</div>`;
+    }
+    h+=`</div>`;
     h+=`</div>`;
   }
 
@@ -943,18 +1174,17 @@ function render(){
     if(rS==="idle")h+=`<button class="rec-btn idle" onclick="toggleRec()"${!hasWK?' disabled style="opacity:0.3"':''}>🎤 ${hasWK?"TAP TO DICTATE":"Add OpenAI key for voice"}</button>`;
     else if(rS==="recording")h+=`<button class="rec-btn recording" onclick="toggleRec()">⏹ RECORDING <span class="timer">${dur}</span></button>`;
     else h+=`<button class="rec-btn transcribing" disabled>⏳ Transcribing...</button>`;
-    h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button class="img-btn" style="flex:1;margin:0" onclick="pickImage()">${s.phase==="image"?"⏳ Analyzing...":"📷 Add Image"}</button><button class="img-btn" style="flex:1;margin:0;border-color:#7c3aed40;color:#a78bfa" onclick="quickCapture()" ${s.phase==="image"||captureActive?"disabled":""}>${s.phase==="image"?"⏳":"📸 Quick Capture"}</button></div>`;
+    h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button class="img-btn" style="flex:1;margin:0" onclick="pickImage()">${s.phase==="image"&&!captureActive?"⏳ Analyzing...":"📷 Add Image"}</button><button class="img-btn" style="flex:1;margin:0;border-color:#7c3aed40;color:#a78bfa" onclick="quickCapture()" ${s.phase==="image"?"disabled":""}>${captureActive?"⏳ Capturing...":"📸 Quick Capture"}</button></div>`;
     if(captureActive){
-      h+=`<div style="background:#7c3aed20;border:2px solid #7c3aed;border-radius:12px;padding:14px;margin-bottom:10px">`;
-      h+=`<div style="font-size:14px;font-weight:800;color:#c4b5fd;margin-bottom:8px">📸 Capture Session</div>`;
-      if(s.phase==="image"){
-        h+=`<div style="font-size:13px;color:#a78bfa;margin-bottom:8px">⏳ Analyzing page ${captureTexts.length+1}...</div>`;
-      }else{
-        h+=`<div style="font-size:13px;color:#86efac;margin-bottom:8px">✅ ${captureTexts.length} page${captureTexts.length!==1?"s":""} captured</div>`;
-        if(captureTexts.length)h+=`<div style="font-size:11px;color:#475569;margin-bottom:10px;max-height:60px;overflow:hidden">${esc(captureTexts[captureTexts.length-1].slice(0,120))}...</div>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:12px;font-size:13px" onclick="addCapturePage()">📷 + Add Page</button><button class="btn" style="background:#059669;flex:1;padding:12px;font-size:13px" onclick="finishCapture()" ${!captureTexts.length?"disabled":""}>✅ Save Draft</button></div>`;
-        h+=`<button style="width:100%;margin-top:6px;padding:6px;font-size:11px;color:#475569;background:none;border:none" onclick="cancelCapture()">Cancel</button>`;
-      }
+      h+=`<div style="background:#7c3aed20;border:2px solid #7c3aed;border-radius:12px;padding:14px;margin-bottom:10px;text-align:center">`;
+      h+=`<div style="font-size:14px;font-weight:800;color:#c4b5fd;margin-bottom:8px">📸 Processing...</div>`;
+      h+=`<div style="font-size:12px;color:#a78bfa">${captureErr||"Analyzing image..."}</div>`;
+      h+=`</div>`;
+    }
+    if(lastDraftId&&!captureActive){
+      h+=`<div style="background:#05966920;border:2px solid #059669;border-radius:12px;padding:12px;margin-bottom:10px">`;
+      h+=`<div style="font-size:13px;color:#86efac;font-weight:700;margin-bottom:6px">✅ Draft saved!</div>`;
+      h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:10px;font-size:12px" onclick="addPageToDraft('${lastDraftId}')" ${s.phase==="image"?"disabled":""}>📷 + Add More Pages</button><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="setState({view:'cases',caseTab:'all'})">📂 View Draft</button></div>`;
       h+=`</div>`;
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
@@ -976,7 +1206,7 @@ function render(){
     AUTH_PROCEDURES.forEach(p=>{h+=`<button class="btn" style="background:${a.procedure===p.id?"#2563eb":"#1e293b"};padding:8px 10px;font-size:11px" onclick="authState.procedure='${p.id}';render()">${p.name}</button>`;});
     h+=`</div>`;
     h+=`<div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px">CLINICAL DATA <span style="color:#475569;font-weight:400">(de-identified only)</span></div>`;
-    const zones=[{id:"mriText",label:"MRI / Imaging",ph:"Paste radiology findings..."},{id:"medsText",label:"Medications",ph:"Failed meds with durations..."},{id:"ptText",label:"PT / Conservative Tx",ph:"PT visits, injections, durations..."},{id:"labsText",label:"Labs",ph:"Cotinine, DEXA..."},{id:"priorText",label:"Prior Procedures",ph:"Prior spine surgery, injections..."}];
+    const zones=[{id:"mriText",label:"📋 MRI / Imaging Report",ph:"Paste RADIOLOGY REPORT only (findings + impression). NOT exam, ROS, or clinical notes."},{id:"medsText",label:"💊 Medications",ph:"Failed meds with durations (e.g. gabapentin 6 weeks, meloxicam 3 months)..."},{id:"ptText",label:"🏋️ PT / Conservative Tx",ph:"PT visits, injection dates, durations, outcomes..."},{id:"labsText",label:"🧪 Labs",ph:"Cotinine level, DEXA T-score, HbA1c..."},{id:"priorText",label:"🔪 Prior Procedures",ph:"Prior spine surgery, injection history, dates..."}];
     zones.forEach(z=>{h+=`<div class="auth-zone"><div class="az-label">${z.label}</div><textarea class="az-ta" placeholder="${esc(z.ph)}" oninput="authState.${z.id}=this.value">${esc(a[z.id])}</textarea></div>`;});
     const canRun=a.payer&&a.procedure&&(a.mriText||a.medsText||a.ptText||a.labsText||a.priorText);
     h+=`<button class="big" style="background:${canRun?"linear-gradient(135deg,#059669,#10b981)":"#1e293b"};margin-top:6px;opacity:${canRun?1:0.4}" onclick="runAuthCheck()" ${!canRun||a.phase==="checking"?"disabled":""}>🛡️ Run Authorization Check</button>`;
@@ -1103,7 +1333,8 @@ function render(){
     if(!filtered.length)h+=`<div style="text-align:center;padding:40px;color:#475569;font-size:14px">${s.caseTab==="Draft"?"No drafts":"No cases yet"}</div>`;
     filtered.slice(0,50).forEach(c=>{
       if(c.draft){
-        h+=`<button class="case-btn" style="border-color:#7c3aed;background:#7c3aed10" onclick="openDraft('${c.id}')"><div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#c4b5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📸 ${esc(c.proc||"Capture")}</div><div style="font-size:11px;color:#7c3aed;margin-top:2px">${esc(c.ts||"")} · Tap to add context</div><div style="font-size:11px;color:#475569;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((c.capturedText||"").slice(0,80))}</div></div><span class="tag" style="background:#7c3aed30;color:#a78bfa">DRAFT</span></div></button>`;
+        const pages=(c.capturedText||"").split("---PAGE BREAK---").length;
+        h+=`<div class="case-btn" style="border-color:#7c3aed;background:#7c3aed10;cursor:default"><div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#c4b5fd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.proc||"Capture")}</div><div style="font-size:11px;color:#7c3aed;margin-top:2px">${esc(c.ts||"")} · ${pages} page${pages!==1?"s":""}</div><div style="font-size:11px;color:#475569;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((c.capturedText||"").slice(0,80))}</div></div><span class="tag" style="background:#7c3aed30;color:#a78bfa">DRAFT</span></div><div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#2563eb;flex:2;padding:8px;font-size:12px" onclick="openDraft('${c.id}')">📝 Open</button><button class="btn" style="background:#7c3aed;padding:8px;font-size:12px" onclick="addPageToDraft('${c.id}')">📷+</button><button class="btn" style="background:#7f1d1d;padding:8px;font-size:12px" onclick="if(confirm('Delete draft?'))deleteCase('${c.id}')">🗑️</button></div></div>`;
       }else{
         const tagColor=c.cat==="Operative"?"#1d4ed8":c.cat==="Clinic"?"#7c3aed":"#059669";
         h+=`<button class="case-btn" onclick="setState({selCase:state.cases.find(x=>x.id==='${c.id}'),view:'detail',detailNoteIdx:0})"><div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.proc||"Case")}</div><div style="font-size:11px;color:#475569;margin-top:2px">${esc(c.ts||c.date||"")}</div></div><span class="tag" style="background:${tagColor}30;color:${tagColor.replace("1d","60").replace("7c","a8").replace("05","34")}">${c.cat||""}</span></div></button>`;
