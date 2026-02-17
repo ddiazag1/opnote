@@ -91,6 +91,18 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 .auth-result.ar-red{background:rgba(220,38,38,0.15);border:1px solid #991b1b;color:#fca5a5}
 .bv-fix{display:inline-block;background:#991b1b;color:#fca5a5;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px}
 .bv-warn{display:inline-block;background:#92400e;color:#fbbf24;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px}
+.b-conf{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.3px;vertical-align:middle;margin-left:4px}
+.b-conf.hi{background:#052e16;color:#4ade80;border:1px solid #16a34a}.b-conf.med{background:#422006;color:#fbbf24;border:1px solid #ca8a04}.b-conf.lo{background:#450a0a;color:#fca5a5;border:1px solid #dc2626}
+.b-cpt{font-family:monospace;font-weight:800;color:#60a5fa;font-size:15px}.b-rvu{font-size:11px;color:#86efac;font-weight:600;margin-left:4px}
+.b-code-row{padding:8px 10px;margin-bottom:4px;background:#0a0f1a;border-radius:8px;border:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px}
+.b-code-desc{font-size:12px;color:#94a3b8;margin-top:2px;width:100%}
+.mdm-row{display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;border-radius:6px;font-size:13px}
+.mdm-lbl{font-weight:700;color:#94a3b8;min-width:70px;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.mdm-val{font-weight:700;padding:2px 10px;border-radius:4px;font-size:12px}
+.mdm-val.high{background:#450a0a;color:#fca5a5;border:1px solid #dc2626}.mdm-val.moderate{background:#422006;color:#fbbf24;border:1px solid #ca8a04}.mdm-val.low{background:#0c1a2e;color:#93c5fd;border:1px solid #3b82f6}.mdm-val.minimal{background:#0f172a;color:#64748b;border:1px solid #334155}
+.mdm-detail{font-size:11px;color:#64748b;margin-left:4px}
+.mdm-result{padding:10px 12px;background:linear-gradient(135deg,#0c1a2e,#0f172a);border:1px solid #1e3a5f;border-radius:8px;margin-top:6px;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;color:#60a5fa}
+.mdm-arrow{color:#3b82f6;font-size:16px}
 </style>
 </head>
 <body>
@@ -473,8 +485,8 @@ function parseFlags(raw){if(!raw)return[];const flags=[];let cur=null;raw.split(
 function parseFinancial(raw){if(!raw)return null;const f={};const rm=raw.match(/TOTAL RVU:\s*([\d.]+)/i);if(rm)f.rvu=rm[1];const cm=raw.match(/CURRENT ESTIMATE:\s*\$?([\d,.\-$\s]+)/i);if(cm)f.current=cm[1].trim();const wm=raw.match(/WITH GAPS.*?:\s*\$?([\d,.\-$\s]+)/i);if(wm)f.potential=wm[1].trim();const cr=raw.match(/CAPTURE RATE:\s*([\d.%]+)/i);if(cr)f.capture=cr[1].trim();return Object.keys(f).length?f:null;}
 function parseBillFull(raw){
   const clean=raw.replace(/\*{2}(CODES|MODIFIERS|ICD-?10|BUNDLING|GAPS|FLAGS|PRE-AUTH[A-Z ]*|FINANCIAL)\*{2}:?/gi,"$1:");
-  const sec={codes:"",modifiers:"",icd:"",bundling:"",gaps:"",flags:"",financial:"",preauth:""};
-  const markers=[{key:"codes",rx:/^CODES:\s*\n/im},{key:"modifiers",rx:/^MODIFIERS:\s*\n/im},{key:"icd",rx:/^ICD-?10:\s*\n/im},{key:"bundling",rx:/^BUNDLING:\s*\n/im},{key:"gaps",rx:/^GAPS:\s*\n/im},{key:"flags",rx:/^FLAGS:\s*\n/im},{key:"preauth",rx:/^PRE-AUTH[A-Z ]*:\s*\n/im},{key:"financial",rx:/^FINANCIAL:\s*\n/im}];
+  const sec={codes:"",modifiers:"",icd:"",bundling:"",gaps:"",flags:"",financial:"",preauth:"",mdm:""};
+  const markers=[{key:"mdm",rx:/^E\/M MDM SCORING:\s*\n/im},{key:"codes",rx:/^CODES:\s*\n/im},{key:"modifiers",rx:/^MODIFIERS:\s*\n/im},{key:"icd",rx:/^ICD-?10:\s*\n/im},{key:"bundling",rx:/^BUNDLING:\s*\n/im},{key:"gaps",rx:/^GAPS:\s*\n/im},{key:"flags",rx:/^FLAGS:\s*\n/im},{key:"preauth",rx:/^PRE-AUTH[A-Z ]*:\s*\n/im},{key:"financial",rx:/^FINANCIAL:\s*\n/im}];
   const found=[];markers.forEach(m=>{const match=clean.match(m.rx);if(match)found.push({key:m.key,idx:match.index,len:match[0].length});});
   found.sort((a,b)=>a.idx-b.idx);
   found.forEach((f,i)=>{const s=f.idx+f.len;const e=i+1<found.length?found[i+1].idx:clean.length;sec[f.key]=clean.slice(s,e).trim();});
@@ -495,6 +507,7 @@ RULES:
 - NEVER fabricate. DRAFT only. THOROUGH.
 - NO patient demographics. NO ** bold. CAPS WITH COLONS for headers.
 - NO blanks, underscores, or square brackets.
+- NEVER output placeholder text: *EXAM NEEDED*, **fill in here**, [fill in], {description}, or any template artifact. If data is missing, generate clinically appropriate ***ASSUMED*** content instead.
 - Assumed: ***ASSUMED*** prefix. Missing implants: ***IMPLANT*** prefix. Added: ***ADDED*** prefix.
 - NEVER mark dates or today's date as ***ASSUMED***. Only mark clinical assumptions.
 - NEVER invent patient occupation, employer, specific activities, hobbies, or lifestyle details not stated in dictation. Only assume CLINICAL details (exam findings, durations, dates).
@@ -512,6 +525,18 @@ MDM COMPLEXITY LINE (non-operative): first line = single sentence.
 MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NEUROMONITORING (ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
 OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NEUROMONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
 NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4h. Single level=q4h. Critical=q1h continuous. Clinic=No neurochecks.
+OPERATIVE NOTE PHYSICAL EXAM RULES:
+- ALL operative notes MUST include a filled PHYSICAL EXAMINATION section. NEVER leave *EXAM NEEDED*, **fill in here**, [fill in], or any placeholder/template text.
+- If dictation includes exam findings, use them exactly.
+- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis:
+  PHYSICAL EXAMINATION:
+    General: Alert, oriented, in no acute distress. ***ASSUMED***
+    Neurological (procedure-appropriate):
+    - Lumbar procedures → Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). Sensory: Intact to light touch L2-S1 dermatomes bilaterally. Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
+    - Cervical procedures → Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
+    - If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
+- NEVER output template artifacts: any text in curly braces, "EXAM NEEDED", "fill in", "[blank]", or instruction text must be replaced with appropriate assumed findings.
+- The assumed exam goes BEFORE the TECHNIQUE section.
 CLINIC NOTE RULES:
 - MANDATORY FIRST LINE for ALL clinic notes: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
   Examples: "NEW PATIENT — MODERATE COMPLEXITY"
@@ -612,6 +637,11 @@ MANDATORY:
 4. PSO decompression=63052/63053.
 5. No 69990 without explicit microscope.
 FORMAT:
+E/M MDM SCORING:
+-RISK: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+-PROBLEMS: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+-DATA: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+→ [scoring summary] = [E/M code] ([new/established])
 CODES:
 [CODE - Description (X.X RVU) CONFIDENCE]
 MODIFIERS: [with justification]
@@ -655,7 +685,7 @@ const SMART_QS={critical:[{q:"Total critical care time?",def:"45 minutes"}],oper
 let state={
   view:"input",text:"",nt:new Date().getDay()===5?"operative":"clinic",clinicVisit:"new",clinicPt:"new",
   noteText:"",billRaw:"",gaps:[],flags:[],financial:null,
-  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",
+  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
   cases:ls(SK,[]),selCase:null,addend:"",caseTab:"all",
   wk:ls("opnote-wkey",""),ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
@@ -782,7 +812,7 @@ function reopenCase(caseId,noteIdx){
   const bv=validateBilling(sec.codes,dn.note);
   setState({
     view:"output",noteText:dn.note||"",billRaw:dn.billRaw||"",
-    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,
+    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,
     gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),
     billingValidation:bv,nt:dn.type||"operative",text:dn.dict||"",
     convo:[{role:"user",content:"DICTATION:\n\n"+(dn.dict||"")},{role:"assistant",content:dn.note||""}],
@@ -921,7 +951,7 @@ async function processCase(){
   let{text,nt}=state;if(!text.trim())return;
   if(!API_KEY){setState({err:"Add API key in Settings."});return;}
   const tStart=Date.now();
-  setState({err:null,noteText:"",billRaw:"",billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",gaps:[],flags:[],financial:null,workup:[],wuChecked:{},questions:[],qEdits:{},addend:"",editing:false,view:"output",phase:"note",_gc:{},tStart,tNote:null,tCopy:null,billingValidation:null,levelUpResult:null});
+  setState({err:null,noteText:"",billRaw:"",billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",gaps:[],flags:[],financial:null,workup:[],wuChecked:{},questions:[],qEdits:{},addend:"",editing:false,view:"output",phase:"note",_gc:{},tStart,tNote:null,tCopy:null,billingValidation:null,levelUpResult:null});
   try{
     let clinicCtx="";
     if(nt==="clinic"){const vLabels={new:"NEW VISIT",followup:"FOLLOW-UP VISIT",postop:"POST-OPERATIVE VISIT"};clinicCtx="\nVISIT TYPE: "+(vLabels[state.clinicVisit]||"NEW VISIT")+"\nPATIENT: "+(state.clinicPt==="established"?"ESTABLISHED":"NEW");}
@@ -941,7 +971,7 @@ async function processCase(){
       const updNote=injectMDM(state.noteText,sec.codes,state.nt);
       if(updNote!==state.noteText)state.noteText=updNote;
       const bv=validateBilling(sec.codes,state.noteText);
-      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
+      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
     }catch(be){setState({err:"Billing failed: "+be.message,phase:"done"});}
     // Save case
     const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
@@ -1074,6 +1104,50 @@ function renderNote(el,text){
     if(/^-\s/.test(ln.trim())){const d=document.createElement("div");d.style.cssText="display:flex;gap:8px;margin-bottom:3px;font-size:13px;color:#cbd5e1;line-height:1.5";d.innerHTML='<span style="color:#475569">-</span><span>'+hlM(esc(ln.trim().slice(2)))+"</span>";el.appendChild(d);return;}
     if(/^\d+[\.\)]\s/.test(ln.trim())){const d=document.createElement("div");d.style.cssText="display:flex;gap:8px;margin-bottom:3px;font-size:13px;color:#cbd5e1;line-height:1.5";const n=ln.trim().match(/^(\d+)[\.\)]\s*(.*)/);d.innerHTML='<span style="color:#64748b;min-width:18px">'+n[1]+'.</span><span>'+hlM(esc(n[2]))+"</span>";el.appendChild(d);return;}
     const d=document.createElement("div");d.style.cssText="font-size:13px;color:#cbd5e1;line-height:1.6;margin:1px 0";d.innerHTML=hlM(esc(ln));el.appendChild(d);
+  });
+}
+function renderBillingCodes(el,text){
+  el.innerHTML="";if(!text)return;
+  text.split("\n").forEach(ln=>{
+    const t=ln.trim();if(!t||/^---+$/.test(t))return;
+    const codeMatch=t.match(/^(\d{5})\s*[-\u2013\u2014]\s*(.*)/);
+    if(codeMatch){
+      const code=codeMatch[1],rest=codeMatch[2];
+      const rvuM=rest.match(/\(([0-9.]+)\s*RVU\)/i);
+      const confM=rest.match(/(HIGH|MED(?:IUM)?|LOW)\s*CONFIDENCE/i);
+      const desc=rest.replace(/\([0-9.]+\s*RVU\)/i,"").replace(/(HIGH|MED(?:IUM)?|LOW)\s*CONFIDENCE/i,"").replace(/\s{2,}/g," ").trim();
+      const row=document.createElement("div");row.className="b-code-row";
+      let h='<div><span class="b-cpt">'+esc(code)+'</span>';
+      if(rvuM)h+='<span class="b-rvu">'+esc(rvuM[1])+' RVU</span>';
+      if(confM){const cl=confM[1].toUpperCase()==="HIGH"?"hi":confM[1].toUpperCase()==="LOW"?"lo":"med";h+='<span class="b-conf '+cl+'">'+esc(confM[1].toUpperCase())+'</span>';}
+      h+='</div>';
+      if(desc)h+='<div class="b-code-desc">'+esc(desc)+'</div>';
+      row.innerHTML=h;el.appendChild(row);
+    }else if(/^[A-Z][A-Z /&\-]{2,}:/.test(t)){
+      const d=document.createElement("div");d.className="slabel";d.style.marginTop="8px";d.innerHTML=esc(t);el.appendChild(d);
+    }else if(/^\u2192|^[\u2192\u21D2]/.test(t)){
+      const d=document.createElement("div");d.className="mdm-result";d.innerHTML=esc(t);el.appendChild(d);
+    }else{
+      const d=document.createElement("div");d.style.cssText="font-size:12px;color:#94a3b8;line-height:1.5;margin:2px 0;padding:0 2px";d.innerHTML=esc(t);el.appendChild(d);
+    }
+  });
+}
+function renderMDM(el,text){
+  el.innerHTML="";if(!text)return;
+  text.split("\n").forEach(ln=>{
+    const t=ln.trim();if(!t||/^---+$/.test(t))return;
+    const elemMatch=t.match(/^-\s*(RISK|PROBLEMS|DATA|NUMBER AND COMPLEXITY OF PROBLEMS|AMOUNT.*DATA|RISK OF COMPLICATIONS):\s*(HIGH|MODERATE|LOW|MINIMAL|STRAIGHTFORWARD)\s*(.*)/i);
+    if(elemMatch){
+      const label=elemMatch[1],level=elemMatch[2].toUpperCase(),detail=elemMatch[3]?elemMatch[3].replace(/^\(/,"").replace(/\)$/,""):"";
+      const cls=level==="HIGH"?"high":level==="MODERATE"?"moderate":level==="LOW"?"low":"minimal";
+      const row=document.createElement("div");row.className="mdm-row";
+      row.innerHTML='<span class="mdm-lbl">'+esc(label)+'</span><span class="mdm-val '+cls+'">'+esc(level)+'</span>'+(detail?'<span class="mdm-detail">('+esc(detail)+')</span>':"");
+      el.appendChild(row);
+    }else if(/^\u2192|^[\u2192\u21D2]/.test(t)){
+      const d=document.createElement("div");d.className="mdm-result";d.innerHTML=esc(t);el.appendChild(d);
+    }else{
+      const d=document.createElement("div");d.style.cssText="font-size:12px;color:#94a3b8;line-height:1.5;margin:2px 0";d.innerHTML=esc(t);el.appendChild(d);
+    }
   });
 }
 
@@ -1310,6 +1384,7 @@ function render(){
       const bv=s.billingValidation;
       if(bv&&bv.correctedRVU)h+=`<div style="margin-top:8px;padding:8px;background:#020617;border-radius:6px;font-size:12px"><span style="color:#94a3b8">Validated Total:</span> <span style="color:#86efac;font-weight:800">${bv.correctedRVU.toFixed(1)} RVU</span></div>`;
       h+=`</div></div>`;
+      if(s.billMDM)h+=`<div class="card" style="border-left:4px solid #8b5cf6"><div class="card-h"><span class="title">🧠 E/M MDM Scoring</span></div><div class="card-b" id="mdmBox"></div></div>`;
       h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Code Detail</span></div><div class="card-b" id="codesBox"></div></div>`;
     }
     // Billing Validator
@@ -1399,7 +1474,8 @@ function render(){
         cpts.forEach(c=>{const rvu=RVU_TABLE[parseInt(c)];h+=`<div>${c}${rvu?` <span style="font-size:11px;color:#86efac;font-weight:400">${rvu} RVU</span>`:""}</div>`;});
         h+=`</div></div>`;
       }
-      h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Billing</span></div><div class="card-b" id="detailBillBox"></div></div>`;
+      if(sec.mdm)h+=`<div class="card" style="border-left:4px solid #8b5cf6"><div class="card-h"><span class="title">🧠 E/M MDM Scoring</span></div><div class="card-b" id="detailMdmBox"></div></div>`;
+      h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Code Detail</span></div><div class="card-b" id="detailBillBox"></div></div>`;
     }
     // Add Details
     h+=`<div class="card" style="border-left:4px solid #6366f1"><div class="card-h"><span class="title" style="font-size:13px;color:#c7d2fe">✏️ Add Details</span><button class="btn" style="background:${s.phase==="image"?"#2563eb":"#334155"}" onclick="pickDetailImage('${c.id}',${ni})" ${s.phase==="image"?"disabled":""}>${s.phase==="image"?"⏳ Analyzing...":"📷"}</button></div><div class="card-b"><textarea class="ta" rows="3" placeholder="Add details, paste imaging, or capture photo..." oninput="state.detailAddendText=this.value">${esc(s.detailAddendText||"")}</textarea>`;
@@ -1441,7 +1517,8 @@ function render(){
   // Post-render DOM updates
   if(s.view==="output"&&!s.editing){const nb=document.getElementById("noteBox");if(nb)renderNote(nb,s.noteText);}
   if(s.view==="output"){
-    const cb=document.getElementById("codesBox");if(cb)renderNote(cb,s.billCodes);
+    const cb=document.getElementById("codesBox");if(cb)renderBillingCodes(cb,s.billCodes);
+    const mdmB=document.getElementById("mdmBox");if(mdmB)renderMDM(mdmB,s.billMDM);
     const mb=document.getElementById("modBox");if(mb)renderNote(mb,s.billMod);
     const ib=document.getElementById("icdBox");if(ib)renderNote(ib,s.billICD);
     const bb=document.getElementById("bundleBox");if(bb)renderNote(bb,s.billBundle);
@@ -1453,7 +1530,7 @@ function render(){
     const ni=Math.min(s.detailNoteIdx||0,notes.length-1);
     const dn=notes[ni];
     const dnb=document.getElementById("detailNoteBox");if(dnb)renderNote(dnb,dn.note);
-    const dbb=document.getElementById("detailBillBox");if(dbb&&dn.billRaw)renderNote(dbb,dn.billRaw);
+    if(dn.billRaw){const dsec=parseBillFull(dn.billRaw);const dbb=document.getElementById("detailBillBox");if(dbb)renderBillingCodes(dbb,dsec.codes);const dmb=document.getElementById("detailMdmBox");if(dmb)renderMDM(dmb,dsec.mdm);}
   }
   if(s.view==="auth"&&authState.letter){const al=document.getElementById("authLetter");if(al)renderNote(al,authState.letter);}
 }
