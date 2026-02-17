@@ -103,8 +103,7 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
 const VAULT_KEY="opnote-vault";
-const EMBEDDED_VAULT='{"s":"69CSAIrKDmsnIe7GjTPJgw==","i":"BD5fzorolLnPYulM","d":"0aGGfItG0nY+1r0jHJgnXdy1fkRdruScgkWTDZP4Ip7EXdd9NzdWHkjy+wsY/PJvkiZRWYJOq36GcL1pN5tpIsHL58vtbgFpyNV13SQqwTDHeM/Ik3aOjSkkRpevJ1kagF3PgLFjhTc8cTjWWYEhib1HX36qaOlcKkrP27XT+Cw0RfmTO4a9TFOAZCZauP2McVzZhp09SCqrIU/h+w35m6wE5aUViO86VfiwgO/8MtevDHdfQRfVGdTZyflH"}';
-
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
 let vaultLocked=false;
 let pinErr="";
 
@@ -150,7 +149,13 @@ async function unlockVault(pin){
   pinErr="";
   try{
     const keys=await decryptVault(pin);
-    API_KEY=keys.ak||"";localStorage.setItem("opnote-api-key",API_KEY);
+    if(!keys.ak){
+      // Vault was encrypted with empty API key
+      pinErr="PIN valid but no API key in vault. Enter key in Settings → tap Update Vault.";
+      vaultLocked=false;render();
+      return;
+    }
+    API_KEY=keys.ak;localStorage.setItem("opnote-api-key",API_KEY);
     if(keys.wk){lsS("opnote-wkey",keys.wk);state.wk=keys.wk;}
     if(keys.gt){localStorage.setItem("opnote-gh-token",keys.gt);ghToken=keys.gt;}
     vaultLocked=false;render();
@@ -158,17 +163,37 @@ async function unlockVault(pin){
   }catch(e){pinErr="Wrong PIN";render();}
 }
 
+let _lastPIN=""; // remember PIN for vault updates
 async function setVaultPIN(pin){
   if(pin.length<3){pinErr="PIN must be 3+ characters";render();return;}
+  if(!API_KEY){pinErr="Add Anthropic API key first";render();return;}
+  _lastPIN=pin;
   await encryptVault(pin);
-  // Show the embeddable blob
   const blob=localStorage.getItem(VAULT_KEY);
   state._vaultBlob=blob;
-  // Clear raw keys from localStorage — vault is now the source of truth
   localStorage.removeItem("opnote-api-key");
   localStorage.removeItem("opnote-wkey");
   localStorage.removeItem("opnote-gh-token");
   vaultLocked=false;pinErr="";render();
+}
+
+async function updateVault(){
+  if(!API_KEY){alert("Add Anthropic API key in Settings first.");return;}
+  const pin=_lastPIN||prompt("Enter your current PIN to re-encrypt:");
+  if(!pin)return;
+  // Verify PIN works with existing vault first
+  try{
+    if(localStorage.getItem(VAULT_KEY)){await decryptVault(pin);}
+  }catch(e){alert("Wrong PIN. Try again.");return;}
+  _lastPIN=pin;
+  await encryptVault(pin);
+  const blob=localStorage.getItem(VAULT_KEY);
+  state._vaultBlob=blob;
+  localStorage.removeItem("opnote-api-key");
+  localStorage.removeItem("opnote-wkey");
+  localStorage.removeItem("opnote-gh-token");
+  alert("Vault updated! Copy new embed code from Settings → Show Embed Code, then update GitHub.");
+  render();
 }
 
 function lockVault(){
@@ -1133,13 +1158,16 @@ function render(){
     h+=`<div style="border-top:1px solid #1e293b;padding-top:12px;margin-top:12px">`;
     h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:8px">🔐 PIN LOCK</div>`;
     if(localStorage.getItem(VAULT_KEY)){
-      h+=`<div style="font-size:11px;color:#86efac;margin-bottom:8px">✅ PIN is set — keys auto-load on unlock</div>`;
+      const keyPreview=API_KEY?("sk-ant-..."+API_KEY.slice(-4)):"⚠️ EMPTY — add key below then Update Vault";
+      h+=`<div style="font-size:11px;color:${API_KEY?"#86efac":"#fca5a5"};margin-bottom:8px">${API_KEY?"✅":"⚠️"} PIN set — Key: ${keyPreview}</div>`;
       h+=`<div style="display:flex;gap:8px;margin-bottom:8px">`;
+      h+=`<button class="btn" style="background:#2563eb;flex:1;padding:8px;font-size:11px" onclick="updateVault()">🔄 Update Vault</button>`;
       h+=`<button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="const p=prompt('Enter new PIN (3+ chars):');if(p)setVaultPIN(p)">Change PIN</button>`;
+      h+=`</div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:8px">`;
+      h+=`<button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="state._vaultBlob=localStorage.getItem('${VAULT_KEY}');render()">📋 Show Embed Code</button>`;
       h+=`<button class="btn" style="background:#7f1d1d;flex:1;padding:8px;font-size:11px" onclick="if(confirm('Remove PIN? Keys stay in settings until you clear them.')){removeVault();}">Remove PIN</button>`;
       h+=`</div>`;
-      // Show embed blob button
-      h+=`<button class="btn" style="background:#334155;width:100%;padding:8px;font-size:11px;margin-bottom:4px" onclick="state._vaultBlob=localStorage.getItem('${VAULT_KEY}');render()">📋 Show Embed Code</button>`;
     }else{
       h+=`<div style="font-size:11px;color:#475569;margin-bottom:8px">Set a PIN to auto-load all keys on any device. Enter your keys above first, then set PIN.</div>`;
       h+=`<button class="btn" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);width:100%;padding:10px;font-size:12px;font-weight:700" onclick="const p=prompt('Choose a PIN (3+ chars):');if(p)setVaultPIN(p)" ${API_KEY?"":"disabled"}>🔐 Set PIN</button>`;
