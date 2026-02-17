@@ -103,7 +103,7 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
 const VAULT_KEY="opnote-vault";
-const EMBEDDED_VAULT='{"s":"YMrbVTtT9yTJ7rb0B++buQ==","i":"cd2GCNsf9N0EV19S","d":"o/hkKrXONRzx97O5fUxp6pfR/K00k0eF+jGSGfeLyUzXH0ordM95yE25/jhuoAjrCqnAqO8Lvk6EObFilxH47OoUX3pxy8aVYyCrL5/2Is/t4HFZRN+V8PmmnLUerbEC2RW0ZYtNMpeT0EAtWZ7YKPIYFaXo99Q+bx9VrG+bdug4Ei/H6zZimzAaET+802JWe2euKxfX+9FCkduqmEi2mg2PYiEuFDviVXXSTEhupLjM60TYP4yzmXnwGOZ1"}';
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
 let vaultLocked=false;
 let pinErr="";
 
@@ -525,16 +525,18 @@ CLINIC NOTE RULES:
     - Post-op routine check → LOW or MODERATE COMPLEXITY
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
-  If the input contains exam findings, use them. If input has NO physical exam data, generate a RELEVANT exam scaffold with ***EXAM NEEDED*** markers:
+  If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
   PHYSICAL EXAMINATION:
-    General: ***EXAM NEEDED — alert/oriented, appearance***
-    Spine: ***EXAM NEEDED — inspection, palpation, ROM***
-  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint:
-    - Lumbar complaint → Motor: ***EXAM NEEDED — L2-S1 myotomes bilaterally***, Sensory: ***EXAM NEEDED — dermatomes***, Reflexes: ***EXAM NEEDED — patellar, Achilles***, SLR: ***EXAM NEEDED***
-    - Cervical complaint → Motor: ***EXAM NEEDED — C5-T1 grip/deltoid/biceps/triceps***, Reflexes: ***EXAM NEEDED — biceps, triceps, brachioradialis***, Hoffmann: ***EXAM NEEDED***, Spurling: ***EXAM NEEDED***
-    - Bowel/bladder symptoms or cauda equina concern → MANDATORY: Rectal tone: ***EXAM NEEDED***, Perianal sensation: ***EXAM NEEDED***, Post-void residual: ***EXAM NEEDED***
-    - Myelopathy concern → Gait: ***EXAM NEEDED***, Hoffmann: ***EXAM NEEDED***, Babinski: ***EXAM NEEDED***, Clonus: ***EXAM NEEDED***
-  The Q: section should ask about MISSING exam findings BEFORE asking about other details.
+    General: Alert, oriented, no acute distress. ***ASSUMED***
+    Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
+  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals:
+    - Lumbar complaint → Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius) ***ASSUMED***, Sensory: Intact to light touch L2-S1 dermatomes bilaterally ***ASSUMED***, Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally ***ASSUMED***, SLR: Negative bilaterally ***ASSUMED***
+    - Cervical complaint → Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics) ***ASSUMED***, Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***, Hoffmann: Negative bilaterally ***ASSUMED***, Spurling: Negative bilaterally ***ASSUMED***
+    - Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Use: Rectal tone: ***NOT EXAMINED — DOCUMENT***, Perianal sensation: ***NOT EXAMINED — DOCUMENT***, Post-void residual: ***NOT EXAMINED — DOCUMENT***
+    - Myelopathy concern → DO NOT assume normal. Use: Gait: ***NOT EXAMINED — DOCUMENT***, Hoffmann: ***NOT EXAMINED — DOCUMENT***, Babinski: ***NOT EXAMINED — DOCUMENT***, Clonus: ***NOT EXAMINED — DOCUMENT***
+    - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
+  CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
+  The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
 - Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
@@ -630,8 +632,10 @@ GAPS:
 CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY for clinic/consult notes):
 - If note has NO PHYSICAL EXAMINATION section → ALWAYS flag as HIGH gap
 - If note has PE but NO neurological exam (motor, sensory, reflexes) → flag as HIGH gap for spine patients
-- If note has bowel/bladder complaints + NO rectal tone/perianal exam → flag as RED FLAG for cauda equina screening
-- If ***EXAM NEEDED*** markers present → flag each as HIGH gap with incorporate language
+- If note has bowel/bladder complaints + ***NOT EXAMINED — DOCUMENT*** for rectal tone/perianal → flag as RED FLAG for cauda equina screening with urgent incorporate language
+- If ***ASSUMED*** markers present → flag as MED gap: "Physical exam auto-filled — verify findings match your examination"
+- If ***ASSUMED FROM HPI*** markers present → flag as MED gap: "Exam finding inferred from history — confirm on examination"
+- If ***NOT EXAMINED — DOCUMENT*** markers present → flag as HIGH gap with specific incorporate language for each
 - These PE gaps take PRIORITY over billing optimization gaps
 IMPACT: HIGH/MED/LOW
 ISSUE: [missing] — [CPT] ([+X.X RVU])
