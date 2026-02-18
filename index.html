@@ -115,7 +115,7 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
 const VAULT_KEY="opnote-vault";
-const EMBEDDED_VAULT='{"s":"0c/HARXrHtcNKb1GPXEehQ==","i":"uFDgTugPsNiA8o/Z","d":"Xx1BvQ3rCWGxDfMwrGozahibrZsw0JUMa0dc2qHTv/1ys5CbPMdQh3KFpsYpraVpUdzlG1uxZeFAIheUDkCmm/m/tskjq9bo/JDeY/53finp0EUN3Qn2NgeU+K/uEGMyWEUoBCmpLyXBOwOlt1m2I002xfJYK0wbr+Bd34nbH0/AW8LYQkXbLOoxAaqOmUCJRx2Rl2w="}';
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
 let vaultLocked=false;
 let pinErr="";
 
@@ -274,7 +274,63 @@ function validateBilling(codes,noteText){
   return{warnings,fixes,correctedRVU:correctedRVU||null};
 }
 
-// ---- AUTH MODULE ----
+// ---- ICD-10 VALIDATOR ----
+function validateICD10(icdText,noteText){
+  if(!icdText||!noteText)return[];
+  const fixes=[];
+  const nU=(noteText||"").toUpperCase();
+  const nL=(noteText||"").toLowerCase();
+  const lines=icdText.split("\n").filter(l=>l.trim());
+  // Extract ICD codes
+  const codes=lines.map(l=>{const m=l.match(/([A-Z]\d{2,3}\.?\d{0,4}[A-Z]?)/i);return m?{code:m[1].toUpperCase(),line:l.trim()}:null;}).filter(Boolean);
+  // Body region detection from note
+  const hasLumbar=/lumbar|l[1-5]|lumbosacral/i.test(noteText);
+  const hasCervical=/cervical|c[2-7]|acdf/i.test(noteText);
+  const hasThoracic=/thoracic|t[1-9]|t1[0-2]/i.test(noteText);
+  const hasLung=/\blung\b|pulmonary metast|lung metast|lung cancer|pulmonary nod/i.test(noteText);
+  const hasArm=/\barm pain\b|upper extremity pain|shoulder pain/i.test(noteText);
+  const hasLeg=/\bleg pain\b|lower extremity pain|thigh pain|calf pain/i.test(noteText);
+  const hasMet=/metast|malignant|cancer|carcinoma|neoplasm|tumor|oncol|recurrence.*lesion/i.test(noteText);
+  const hasSpineMet=hasMet&&(hasLumbar||hasCervical||hasThoracic||/spine|spinal|vertebr/i.test(noteText));
+  const hasFootDrop=/foot drop|drop foot|tibialis anterior [0-4]\/5|EHL [0-4]\/5|peroneal/i.test(noteText);
+  const hasMyelopathy=/myelopath|cord compress|hoffmann|hyperreflex|clonus|babinski|spastic/i.test(noteText);
+  const hasCaudaEquina=/cauda equina|saddle|bowel.*bladder|urinary retention/i.test(noteText);
+  const hasFracture=/fracture|VCF|compression fracture|burst|kyphoplasty|corpectomy/i.test(noteText);
+  const hasRadiculopathy=/radiculop|radiating|sciatica|nerve root/i.test(noteText);
+  const hasStenosis=/stenosis/i.test(noteText);
+  const hasSpondylolisthesis=/spondylolisthesis|listhesis|anterolisthesis/i.test(noteText);
+  const hasPostOp=/post.?op|status post|s\/p|prior.*(surgery|fusion|decompression|corpectomy|laminectomy)/i.test(noteText);
+
+  codes.forEach(({code,line})=>{
+    // C78.xx — lung/respiratory mets — flag if no lung mentioned
+    if(/^C78/i.test(code)&&!hasLung)fixes.push({msg:"ICD-10 MISMATCH: "+code+" (lung/respiratory metastasis) — note does not mention lung involvement. For spinal metastasis use C79.51.",code,suggest:"C79.51"});
+    // M79.601/602 — arm pain for spine patients without arm pain
+    if(/^M79\.60[12]$/i.test(code)&&!hasArm)fixes.push({msg:"ICD-10 MISMATCH: "+code+" (arm pain) — not documented in note.",code});
+    // G83.84 — Todd's paralysis (post-seizure) — almost never correct for spine
+    if(/^G83\.84$/i.test(code))fixes.push({msg:"ICD-10 ERROR: G83.84 (Todd's paralysis) is post-seizure only. For foot drop use M21.37x, for nerve root compression use appropriate radiculopathy code.",code,suggest:hasFootDrop?"M21.37x":"G83.10"});
+    // C79.51 check — spine met should only be used if met mentioned
+    if(/^C79\.51$/i.test(code)&&!hasSpineMet)fixes.push({msg:"ICD-10 MISMATCH: C79.51 (spinal metastasis) — metastatic disease not documented.",code});
+    // Z51.0 — radiation therapy — only if radiation discussed
+    if(/^Z51\.0$/i.test(code)&&!/radiat|XRT|EBRT/i.test(noteText))fixes.push({msg:"ICD-10 QUESTIONABLE: Z51.0 (radiation therapy encounter) — radiation therapy not documented as being received.",code});
+    // Laterality checks for radiculopathy
+    if(code==="M54.41"&&!/left/i.test(noteText)&&/right/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.41 is LEFT lumbar radiculopathy but note mentions right side.",code,suggest:"M54.42"});
+    if(code==="M54.42"&&!/right/i.test(noteText)&&/left/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.42 is RIGHT lumbar radiculopathy but note mentions left side.",code,suggest:"M54.41"});
+    // Region mismatch checks
+    if(/^M48\.02$/i.test(code)&&!hasCervical&&hasLumbar)fixes.push({msg:"ICD-10 REGION: M48.02 (cervical stenosis) but note describes lumbar pathology. Use M48.06.",code,suggest:"M48.06"});
+    if(/^M48\.06$/i.test(code)&&!hasLumbar&&hasCervical)fixes.push({msg:"ICD-10 REGION: M48.06 (lumbar stenosis) but note describes cervical pathology. Use M48.02.",code,suggest:"M48.02"});
+    if(/^M51\.1[67]$/i.test(code)&&!hasLumbar)fixes.push({msg:"ICD-10 REGION: "+code+" (lumbar disc) but lumbar pathology not documented.",code});
+    if(/^M50\.1[23]$/i.test(code)&&!hasCervical)fixes.push({msg:"ICD-10 REGION: "+code+" (cervical disc) but cervical pathology not documented.",code});
+  });
+
+  // Missing code suggestions
+  if(hasSpineMet&&!codes.some(c=>/^C79\.5/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Spinal metastasis documented but C79.51 not listed.",suggest:"C79.51"});
+  if(hasFootDrop&&!codes.some(c=>/^M21\.37|^G83\.1/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Foot drop documented but no foot drop code (M21.37x) listed.",suggest:"M21.37x"});
+  if(hasMyelopathy&&!codes.some(c=>/myelopath/i.test(c.line)||/^M47\.1|^G95/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Myelopathy documented but no myelopathy code listed.",suggest:"M47.12 or G95.20"});
+  if(hasCaudaEquina&&!codes.some(c=>/^G83\.4/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Cauda equina documented but G83.4 not listed.",suggest:"G83.4"});
+  if(hasPostOp&&!codes.some(c=>/^Z98\.1|^Z48/i.test(c.code)))fixes.push({msg:"ICD-10 CONSIDER: Post-operative status documented — consider Z98.1 (status post fusion) if applicable."});
+
+  return fixes;
+}
 let policyEngine=null;
 let authState={payer:"",procedure:"",mriText:"",medsText:"",ptText:"",labsText:"",priorText:"",results:null,letter:"",phase:"",err:null};
 const AUTH_PAYERS=[{id:"cigna",name:"Cigna",color:"#2563eb"},{id:"aetna",name:"Aetna",color:"#7c3aed"},{id:"uhc",name:"UHC",color:"#059669"},{id:"other",name:"Other (Conservative)",color:"#475569"}];
@@ -499,28 +555,6 @@ function formatEMR(t){return stripAll(stripBilling(t)).replace(/\n(?=[A-Z][A-Z /
 function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
-function copyForAgent(bid){
-  var noteText=formatEMR(state.editing?state.editText:state.noteText);
-  var icdRaw=state.billICD||"";
-  var icd10_codes=[];
-  icdRaw.split("\n").forEach(function(line){
-    var m=line.match(/([A-Z]\d{1,2}\.?\d{0,4})\s*[-\u2013\u2014:]\s*(.*)/i);
-    if(m)icd10_codes.push({code:m[1].trim(),description:m[2].trim()});
-  });
-  var payload={
-    _type:"opnote-emr-agent",
-    _timestamp:new Date().toISOString(),
-    note_type:state.nt,
-    note_text:noteText,
-    icd10_codes:icd10_codes,
-    primary_icd10:icd10_codes.length?icd10_codes[0].code:null,
-    surgeon:state.sn||"Diaz"
-  };
-  navigator.clipboard.writeText(JSON.stringify(payload)).catch(function(){});
-  var b=document.getElementById(bid);
-  if(b){var o=b.innerHTML;b.innerHTML="\u2705 Copied!";b.style.background="#059669";setTimeout(function(){if(b){b.innerHTML=o;b.style.background="";}},2000);}
-}
-
 // ---- SYSTEM PROMPT ----
 function getSYS(){return `You are OpNote Intelligence — neurosurgery note generator and billing engine.
 Date: ${TODAY}
@@ -669,6 +703,8 @@ CODES:
 MODIFIERS: [with justification]
 ICD-10: [one per line]
 ICD-10 ACCURACY RULES:
+CRITICAL: EVERY ICD-10 code MUST directly relate to conditions documented in the note. NEVER hallucinate codes for body parts, conditions, or organs not discussed. If unsure of exact code, describe the condition and use "unspecified" variant rather than guessing wrong.
+DEGENERATIVE SPINE:
 - Lumbar radiculopathy = M54.41 (left), M54.42 (right), M54.40 (unspecified)
 - Cervical radiculopathy = M54.12 (cervical), M54.13 (cervicothoracic)
 - Lumbar disc herniation with radiculopathy = M51.16 (lumbar), M51.17 (lumbosacral)
@@ -677,8 +713,41 @@ ICD-10 ACCURACY RULES:
 - Lumbar stenosis = M48.06 (lumbar), M48.07 (lumbosacral)
 - Cervical stenosis = M48.02 (cervical)
 - Spondylolisthesis = M43.16 (lumbar), M43.12 (cervical)
+SPINAL METASTASIS/ONCOLOGY:
+- Secondary malignant neoplasm of vertebral column = C79.51 (NEVER use C78.xx lung codes for spine mets)
+- Secondary malignant neoplasm of spinal cord/meninges = C79.49
+- Primary rectal cancer = C20
+- Primary lung cancer = C34.90 (unspecified), C34.11 (right upper), C34.12 (left upper)
+- Primary breast cancer = C50.919 (unspecified)
+- Primary prostate cancer = C61
+- Primary renal cancer = C64.9
+- Pathological fracture due to neoplasm = M84.58XA (lumbar), M84.58XD (subsequent)
+- Always code BOTH the metastasis site (C79.51 for spine) AND the primary cancer
+NEUROLOGICAL DEFICITS:
+- Foot drop = M21.372 (left), M21.371 (right), M21.379 (unspecified)
+- Wrist drop = M21.332 (left), M21.331 (right)
+- Monoplegia of lower limb = G83.10 (unspecified), G83.12 (left), G83.11 (right)
+- Paraplegia = G82.20 (unspecified)
+- Neurogenic bladder = N31.9
+- Cauda equina syndrome = G83.4
+- Myelopathy NOS = G95.89
+COMPRESSION FRACTURES:
+- Osteoporotic VCF thoracic = M80.08XA (initial), M80.08XD (subsequent)
+- Osteoporotic VCF lumbar = M80.08XA
+- Pathological fracture = M84.58XA (initial encounter)
+- Traumatic fracture lumbar = S32.009A (initial)
+POST-SURGICAL/STATUS:
+- Status post spinal fusion = Z98.1
+- Encounter for surgical aftercare = Z48.89 (other specified)
+- Pseudarthrosis after fusion = M96.0
+- Adjacent segment disease = M47.817 (lumbar spondylosis with radiculopathy after prior fusion)
+PROHIBITED:
 - NEVER use M25.5xx (joint pain) for radicular leg pain. Use M79.604 (left leg) or M79.601 (right leg) only if needed.
 - NEVER use M79.2 for radiculopathy. Use M54.4x codes.
+- NEVER use C78.xx (lung/respiratory mets) unless lung metastasis is specifically documented.
+- NEVER use M79.601/M79.602 (arm pain) for spine patients unless arm pain specifically documented.
+- NEVER use G83.84 (Todd's paralysis) for foot drop or weakness from compression — Todd's is post-seizure only.
+- NEVER code conditions for body regions not discussed in the note.
 BUNDLING: [notes]
 GAPS:
 CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY for clinic/consult notes):
@@ -707,7 +776,7 @@ const SMART_QS={critical:[{q:"Total critical care time?",def:"45 minutes"}],oper
 let state={
   view:"input",text:"",nt:new Date().getDay()===5?"operative":"clinic",clinicVisit:"new",clinicPt:"new",
   noteText:"",billRaw:"",gaps:[],flags:[],financial:null,
-  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",
+  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",icdFixes:[],
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
   cases:ls(SK,[]),selCase:null,addend:"",caseTab:"all",
   wk:ls("opnote-wkey",""),ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
@@ -832,9 +901,10 @@ function reopenCase(caseId,noteIdx){
   const dn=notes[ni];
   const sec=parseBillFull(dn.billRaw||"");
   const bv=validateBilling(sec.codes,dn.note);
+  const icdV=validateICD10(sec.icd,dn.note);
   setState({
     view:"output",noteText:dn.note||"",billRaw:dn.billRaw||"",
-    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,
+    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,icdFixes:icdV,
     gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),
     billingValidation:bv,nt:dn.type||"operative",text:dn.dict||"",
     convo:[{role:"user",content:"DICTATION:\n\n"+(dn.dict||"")},{role:"assistant",content:dn.note||""}],
@@ -993,7 +1063,8 @@ async function processCase(){
       const updNote=injectMDM(state.noteText,sec.codes,state.nt);
       if(updNote!==state.noteText)state.noteText=updNote;
       const bv=validateBilling(sec.codes,state.noteText);
-      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
+      const icdV=validateICD10(sec.icd,state.noteText);
+      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,icdFixes:icdV,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
     }catch(be){setState({err:"Billing failed: "+be.message,phase:"done"});}
     // Save case
     const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
@@ -1173,6 +1244,8 @@ function renderMDM(el,text){
   });
 }
 
+function updProcBtn(){const b=document.getElementById("procBtn");if(!b)return;const has=state.text.trim();b.disabled=!has;b.style.opacity=has?"1":"0.4";b.style.background=has?"linear-gradient(135deg,#1d4ed8,#2563eb)":"#1e293b";}
+
 // ============================================================
 // RENDER
 // ============================================================
@@ -1317,10 +1390,10 @@ function render(){
       h+=`</div>`;
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
-    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value">${esc(s.text)}</textarea>`;
+    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value;updProcBtn()">${esc(s.text)}</textarea>`;
     if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';render()">Clear</button></div>`;}
     if(s.linkedTo){const lc=s.cases.find(c=>c.id===s.linkedTo);if(lc)h+=`<div style="background:#1e3a5f30;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#60a5fa">🔗 Linked to: ${esc(lc.proc)} <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({linkedTo:null})">✕</button></div>`;}
-    h+=`<button class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
+    h+=`<button id="procBtn" class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
   }
 
@@ -1382,7 +1455,7 @@ function render(){
     }
     // Note
     if(s.noteText){
-      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">📋 Copy → EMR</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">📋 Copy → EMR</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
       h+=`<div class="card" style="border-left:4px solid #3b82f6"><div class="card-h"><span class="title">📋 Note</span><div style="display:flex;gap:6px">`;
       if(!s.editing)h+=`<button class="btn" style="background:#334155" onclick="state.editText=state.noteText;state.editing=true;render()">✏️</button>`;
       else h+=`<button class="btn" style="background:#059669" onclick="state.noteText=state.editText;state.editing=false;render()">💾</button><button class="btn" style="background:#7f1d1d" onclick="state.editing=false;render()">✕</button>`;
@@ -1413,6 +1486,7 @@ function render(){
     if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
     if(s.billMod)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📎 Modifiers</span></div><div class="card-b" id="modBox"></div></div>`;
     if(s.billICD)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">🏥 ICD-10</span></div><div class="card-b" id="icdBox"></div></div>`;
+    if(s.icdFixes&&s.icdFixes.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 ICD-10 Validator</span><span style="font-size:11px;color:#fca5a5">${s.icdFixes.length} issue${s.icdFixes.length>1?"s":""}</span></div><div class="card-b">`;s.icdFixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}${f.suggest?` <span style="color:#86efac;font-weight:700">→ Use ${esc(f.suggest)}</span>`:""}</div>`;});h+=`</div></div>`;}
     if(s.billBundle)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📦 Bundling</span></div><div class="card-b" id="bundleBox"></div></div>`;
     if(s.billPreauth)h+=`<div class="card" style="border-left:4px solid #a78bfa"><div class="card-h"><span class="title">📋 Pre-Authorization</span></div><div class="card-b" id="preauthBox"></div></div>`;
     // Gaps
