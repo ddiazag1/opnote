@@ -300,6 +300,11 @@ function validateICD10(icdText,noteText){
   const hasStenosis=/stenosis/i.test(noteText);
   const hasSpondylolisthesis=/spondylolisthesis|listhesis|anterolisthesis/i.test(noteText);
   const hasPostOp=/post.?op|status post|s\/p|prior.*(surgery|fusion|decompression|corpectomy|laminectomy)/i.test(noteText);
+  const hasCarpalTunnel=/carpal tunnel/i.test(noteText);
+  const hasUlnarNeuropathy=/ulnar neuropath|cubital tunnel/i.test(noteText);
+  const hasPeronealNeuropathy=/peroneal neuropath/i.test(noteText);
+  const hasLeftSide=/\bleft\b/i.test(noteText);
+  const hasRightSide=/\bright\b/i.test(noteText);
 
   codes.forEach(({code,line})=>{
     // C78.xx — lung/respiratory mets — flag if no lung mentioned
@@ -312,9 +317,18 @@ function validateICD10(icdText,noteText){
     if(/^C79\.51$/i.test(code)&&!hasSpineMet)fixes.push({msg:"ICD-10 MISMATCH: C79.51 (spinal metastasis) — metastatic disease not documented.",code});
     // Z51.0 — radiation therapy — only if radiation discussed
     if(/^Z51\.0$/i.test(code)&&!/radiat|XRT|EBRT/i.test(noteText))fixes.push({msg:"ICD-10 QUESTIONABLE: Z51.0 (radiation therapy encounter) — radiation therapy not documented as being received.",code});
+    // Z48.89 — generic aftercare — flag when more specific code available
+    if(/^Z48\.89$/i.test(code)){
+      if(hasCarpalTunnel)fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 (other surgical aftercare) too generic — code the underlying condition. Carpal tunnel post-op → use G56.0x as primary.",code,suggest:hasLeftSide?"G56.02":hasRightSide?"G56.01":"G56.00"});
+      else if(hasPostOp&&/fusion|arthrodesis/i.test(noteText))fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 too generic for spinal fusion aftercare — use Z98.1 (arthrodesis status) + condition code.",code,suggest:"Z98.1"});
+      else fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 (other surgical aftercare) is non-specific — prefer coding the underlying condition being followed."});
+    }
     // Laterality checks for radiculopathy
     if(code==="M54.41"&&!/left/i.test(noteText)&&/right/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.41 is LEFT lumbar radiculopathy but note mentions right side.",code,suggest:"M54.42"});
     if(code==="M54.42"&&!/right/i.test(noteText)&&/left/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.42 is RIGHT lumbar radiculopathy but note mentions left side.",code,suggest:"M54.41"});
+    // Carpal tunnel laterality
+    if(/^G56\.01$/i.test(code)&&!hasRightSide&&hasLeftSide)fixes.push({msg:"ICD-10 LATERALITY: G56.01 is RIGHT carpal tunnel but note describes left side.",code,suggest:"G56.02"});
+    if(/^G56\.02$/i.test(code)&&!hasLeftSide&&hasRightSide)fixes.push({msg:"ICD-10 LATERALITY: G56.02 is LEFT carpal tunnel but note describes right side.",code,suggest:"G56.01"});
     // Region mismatch checks
     if(/^M48\.02$/i.test(code)&&!hasCervical&&hasLumbar)fixes.push({msg:"ICD-10 REGION: M48.02 (cervical stenosis) but note describes lumbar pathology. Use M48.06.",code,suggest:"M48.06"});
     if(/^M48\.06$/i.test(code)&&!hasLumbar&&hasCervical)fixes.push({msg:"ICD-10 REGION: M48.06 (lumbar stenosis) but note describes cervical pathology. Use M48.02.",code,suggest:"M48.02"});
@@ -327,7 +341,8 @@ function validateICD10(icdText,noteText){
   if(hasFootDrop&&!codes.some(c=>/^M21\.37|^G83\.1/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Foot drop documented but no foot drop code (M21.37x) listed.",suggest:"M21.37x"});
   if(hasMyelopathy&&!codes.some(c=>/myelopath/i.test(c.line)||/^M47\.1|^G95/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Myelopathy documented but no myelopathy code listed.",suggest:"M47.12 or G95.20"});
   if(hasCaudaEquina&&!codes.some(c=>/^G83\.4/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Cauda equina documented but G83.4 not listed.",suggest:"G83.4"});
-  if(hasPostOp&&!codes.some(c=>/^Z98\.1|^Z48/i.test(c.code)))fixes.push({msg:"ICD-10 CONSIDER: Post-operative status documented — consider Z98.1 (status post fusion) if applicable."});
+  if(hasCarpalTunnel&&!codes.some(c=>/^G56\.0/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Carpal tunnel syndrome documented but G56.0x not listed.",suggest:hasLeftSide?"G56.02":hasRightSide?"G56.01":"G56.00"});
+  if(hasPostOp&&!codes.some(c=>/^Z98\.1|^Z48|^G56\.0/i.test(c.code)))fixes.push({msg:"ICD-10 CONSIDER: Post-operative status documented — consider Z98.1 (status post fusion) or condition-specific code."});
 
   return fixes;
 }
@@ -540,7 +555,7 @@ function parseGaps(raw){if(!raw)return[];const gaps=[];let cur=null;raw.split("\
 function parseFlags(raw){if(!raw)return[];const flags=[];let cur=null;raw.split("\n").forEach(l=>{const t=l.trim();const m=t.match(/^(RED|YELLOW|GREEN):\s*(.*)/i);if(m){if(cur)flags.push(cur);cur={type:m[1].toUpperCase(),text:m[2].trim(),input:null};}else if(t.startsWith("INPUT_NEEDED:")&&cur)cur.input=t.slice(13).trim();else if(cur&&t)cur.text+="\n"+t;});if(cur)flags.push(cur);return flags;}
 function parseFinancial(raw){if(!raw)return null;const f={};const rm=raw.match(/TOTAL RVU:\s*([\d.]+)/i);if(rm)f.rvu=rm[1];const cm=raw.match(/CURRENT ESTIMATE:\s*\$?([\d,.\-$\s]+)/i);if(cm)f.current=cm[1].trim();const wm=raw.match(/WITH GAPS.*?:\s*\$?([\d,.\-$\s]+)/i);if(wm)f.potential=wm[1].trim();const cr=raw.match(/CAPTURE RATE:\s*([\d.%]+)/i);if(cr)f.capture=cr[1].trim();return Object.keys(f).length?f:null;}
 function parseBillFull(raw){
-  const clean=raw.replace(/\*{2}(CODES|MODIFIERS|ICD-?10|BUNDLING|GAPS|FLAGS|PRE-AUTH[A-Z ]*|FINANCIAL)\*{2}:?/gi,"$1:");
+  const clean=raw.replace(/\*{2,}/g,"").replace(/^BILLING ANALYSIS:?\s*\n/im,"");
   const sec={codes:"",modifiers:"",icd:"",bundling:"",gaps:"",flags:"",financial:"",preauth:"",mdm:""};
   const markers=[{key:"mdm",rx:/^E\/M MDM SCORING:\s*\n/im},{key:"codes",rx:/^CODES:\s*\n/im},{key:"modifiers",rx:/^MODIFIERS:\s*\n/im},{key:"icd",rx:/^ICD-?10:\s*\n/im},{key:"bundling",rx:/^BUNDLING:\s*\n/im},{key:"gaps",rx:/^GAPS:\s*\n/im},{key:"flags",rx:/^FLAGS:\s*\n/im},{key:"preauth",rx:/^PRE-AUTH[A-Z ]*:\s*\n/im},{key:"financial",rx:/^FINANCIAL:\s*\n/im}];
   const found=[];markers.forEach(m=>{const match=clean.match(m.rx);if(match)found.push({key:m.key,idx:match.index,len:match[0].length});});
@@ -551,7 +566,17 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){return stripAll(stripBilling(t)).replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n").replace(/\n{3,}/g,"\n\n").trim();}
+function formatEMR(t){
+  let o=stripAll(stripBilling(t));
+  // Add double newline before ALL CAPS section headers
+  o=o.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");
+  // Add newline before PE sub-headers with colons that are run together
+  o=o.replace(/(?<!\n)\s*\b(General|Spine|Neurological|Motor|Sensory|Reflexes|SLR|Gait|Cervical|Lumbar|Thoracic|Hoffmann|Spurling|Babinski|Clonus|Rectal|Perianal|Upper [Ee]xtremit|Lower [Ee]xtremit|Cranial [Nn]erves|Strength|Tone|Coordination|Balance|Extremities|Cardiovascular|Pulmonary|Abdomen|Musculoskeletal|Skin|Mental [Ss]tatus)\s*:/g,"\n$1:");
+  // Handle exam findings WITHOUT colons (e.g. "Motor 5/5", "Sensory intact", "Hoffmann negative")
+  o=o.replace(/(?<!\n)[\s.]+\b(Motor\s+\d\/5|Sensory\s+(?:intact|diminished|absent)|Reflexes?\s+(?:patellar|biceps|triceps|achilles|brachioradialis|\d)|SLR\s+(?:negative|positive)|Hoffmann\s+(?:negative|positive)|Spurling\s+(?:negative|positive)|Babinski\s+(?:negative|positive|downgoing|upgoing)|Clonus\s+(?:negative|positive|absent|none|present)|Gait\s*(?:normal|antalgic|ataxic|requires|steady|unsteady|wide))/gi,"\n$1");
+  o=o.replace(/\n{3,}/g,"\n\n");
+  return o.trim();
+}
 function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
@@ -565,6 +590,7 @@ RULES:
 - NO blanks, underscores, or square brackets.
 - NEVER output placeholder text: *EXAM NEEDED*, **fill in here**, [fill in], {description}, or any template artifact. If data is missing, generate clinically appropriate ***ASSUMED*** content instead.
 - Assumed: ***ASSUMED*** prefix. Missing implants: ***IMPLANT*** prefix. Added: ***ADDED*** prefix.
+- PHYSICAL EXAM FORMATTING: Each exam element (General, Spine, Motor, Sensory, Reflexes, SLR, Gait, Hoffmann, Spurling, Babinski, Clonus) MUST be on its own separate line. NEVER concatenate exam elements on a single line.
 - NEVER mark dates or today's date as ***ASSUMED***. Only mark clinical assumptions.
 - NEVER invent patient occupation, employer, specific activities, hobbies, or lifestyle details not stated in dictation. Only assume CLINICAL details (exam findings, durations, dates).
 - NEVER fabricate specific calendar dates for treatments. Use "per patient report" instead of invented dates.
@@ -584,13 +610,18 @@ NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4
 OPERATIVE NOTE PHYSICAL EXAM RULES:
 - ALL operative notes MUST include a filled PHYSICAL EXAMINATION section. NEVER leave *EXAM NEEDED*, **fill in here**, [fill in], or any placeholder/template text.
 - If dictation includes exam findings, use them exactly.
-- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis:
+- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis. EACH EXAM ELEMENT MUST BE ON ITS OWN LINE:
   PHYSICAL EXAMINATION:
-    General: Alert, oriented, in no acute distress. ***ASSUMED***
-    Neurological (procedure-appropriate):
-    - Lumbar procedures → Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). Sensory: Intact to light touch L2-S1 dermatomes bilaterally. Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
-    - Cervical procedures → Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
-    - If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
+  General: Alert, oriented, in no acute distress. ***ASSUMED***
+  Neurological (procedure-appropriate, each on its own line):
+    Lumbar procedures →
+      Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). ***ASSUMED***
+      Sensory: Intact to light touch L2-S1 dermatomes bilaterally. ***ASSUMED***
+      Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
+    Cervical procedures →
+      Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). ***ASSUMED***
+      Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
+    If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
 - NEVER output template artifacts: any text in curly braces, "EXAM NEEDED", "fill in", "[blank]", or instruction text must be replaced with appropriate assumed findings.
 - The assumed exam goes BEFORE the TECHNIQUE section.
 CLINIC NOTE RULES:
@@ -607,15 +638,31 @@ CLINIC NOTE RULES:
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
+  EACH EXAM ELEMENT MUST BE ON ITS OWN LINE. Never run General/Spine/Motor/Sensory/Reflexes together on one line.
   PHYSICAL EXAMINATION:
-    General: Alert, oriented, no acute distress. ***ASSUMED***
-    Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
-  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals:
-    - Lumbar complaint → Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius) ***ASSUMED***, Sensory: Intact to light touch L2-S1 dermatomes bilaterally ***ASSUMED***, Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally ***ASSUMED***, SLR: Negative bilaterally ***ASSUMED***
-    - Cervical complaint → Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics) ***ASSUMED***, Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***, Hoffmann: Negative bilaterally ***ASSUMED***, Spurling: Negative bilaterally ***ASSUMED***
-    - Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Use: Rectal tone: ***NOT EXAMINED — DOCUMENT***, Perianal sensation: ***NOT EXAMINED — DOCUMENT***, Post-void residual: ***NOT EXAMINED — DOCUMENT***
-    - Myelopathy concern → DO NOT assume normal. Use: Gait: ***NOT EXAMINED — DOCUMENT***, Hoffmann: ***NOT EXAMINED — DOCUMENT***, Babinski: ***NOT EXAMINED — DOCUMENT***, Clonus: ***NOT EXAMINED — DOCUMENT***
-    - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
+  General: Alert, oriented, no acute distress. ***ASSUMED***
+  Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
+  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals, EACH ON ITS OWN LINE:
+    Lumbar complaint →
+      Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). ***ASSUMED***
+      Sensory: Intact to light touch L2-S1 dermatomes bilaterally. ***ASSUMED***
+      Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally. ***ASSUMED***
+      SLR: Negative bilaterally. ***ASSUMED***
+    Cervical complaint →
+      Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics). ***ASSUMED***
+      Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally. ***ASSUMED***
+      Hoffmann: Negative bilaterally. ***ASSUMED***
+      Spurling: Negative bilaterally. ***ASSUMED***
+    Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Each on own line:
+      Rectal tone: ***NOT EXAMINED — DOCUMENT***
+      Perianal sensation: ***NOT EXAMINED — DOCUMENT***
+      Post-void residual: ***NOT EXAMINED — DOCUMENT***
+    Myelopathy concern → DO NOT assume normal. Each on own line:
+      Gait: ***NOT EXAMINED — DOCUMENT***
+      Hoffmann: ***NOT EXAMINED — DOCUMENT***
+      Babinski: ***NOT EXAMINED — DOCUMENT***
+      Clonus: ***NOT EXAMINED — DOCUMENT***
+    If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
   CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
@@ -738,9 +785,20 @@ COMPRESSION FRACTURES:
 - Traumatic fracture lumbar = S32.009A (initial)
 POST-SURGICAL/STATUS:
 - Status post spinal fusion = Z98.1
-- Encounter for surgical aftercare = Z48.89 (other specified)
 - Pseudarthrosis after fusion = M96.0
 - Adjacent segment disease = M47.817 (lumbar spondylosis with radiculopathy after prior fusion)
+- AFTERCARE CODING RULE: Do NOT default to Z48.89 (other specified surgical aftercare). Instead code the UNDERLYING CONDITION being followed:
+  - Post carpal tunnel release → G56.01 (right) or G56.02 (left) as primary dx
+  - Post spinal fusion → Z98.1 (arthrodesis status) + condition (M54.5, M48.06, etc.)
+  - Post laminectomy → condition being treated (stenosis, herniation, etc.)
+  - Z48.89 is ONLY appropriate when no more specific code exists
+PERIPHERAL NERVE / EXTREMITY:
+- Carpal tunnel syndrome = G56.01 (right), G56.02 (left), G56.00 (unspecified)
+- Ulnar neuropathy at elbow = G56.21 (right), G56.22 (left)
+- Cubital tunnel syndrome = G56.21 (right), G56.22 (left)
+- Peroneal neuropathy = G57.31 (right), G57.32 (left)
+- Tarsal tunnel syndrome = G57.51 (right), G57.52 (left)
+- Meralgia paresthetica = G57.11 (right), G57.12 (left)
 PROHIBITED:
 - NEVER use M25.5xx (joint pain) for radicular leg pain. Use M79.604 (left leg) or M79.601 (right leg) only if needed.
 - NEVER use M79.2 for radiculopathy. Use M54.4x codes.
