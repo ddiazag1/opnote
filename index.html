@@ -115,7 +115,7 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
 const VAULT_KEY="opnote-vault";
-vaultconst EMBEDDED_VAULT='{"s":"WMkwvHsRx12KwAZpL+bGqA==","i":"oeyOB+oFki0eunB5","d":"Vq5d4xIu4rRKLg5yJUcd26enPc+JKZAPLBmzo80R63OqutHDk8r0M61ba9b7ZGmbcxrMW/0/iB7wVyM59k4/tuAMjAszCN+Ws59ymLeo0I+l0gdxoUx1prXkKFYStkCsl2v019PCA/h/XkVm7YaMiwGhGh6HKEhU7MI+yAWOXbW3rZlNvc6+BpfaLxqKEE387j36KG1kjWhVQjVUaibtrylU9Zd39GbSVa8qyt1Yo9D2dEIQbqmrM+oLBxRR"}';
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
 let vaultLocked=false;
 let pinErr="";
 
