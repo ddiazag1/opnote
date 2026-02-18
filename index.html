@@ -115,7 +115,7 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
 const VAULT_KEY="opnote-vault";
-const EMBEDDED_VAULT='{"s":"WMkwvHsRx12KwAZpL+bGqA==","i":"oeyOB+oFki0eunB5","d":"Vq5d4xIu4rRKLg5yJUcd26enPc+JKZAPLBmzo80R63OqutHDk8r0M61ba9b7ZGmbcxrMW/0/iB7wVyM59k4/tuAMjAszCN+Ws59ymLeo0I+l0gdxoUx1prXkKFYStkCsl2v019PCA/h/XkVm7YaMiwGhGh6HKEhU7MI+yAWOXbW3rZlNvc6+BpfaLxqKEE387j36KG1kjWhVQjVUaibtrylU9Zd39GbSVa8qyt1Yo9D2dEIQbqmrM+oLBxRR"}';
+vaultconst EMBEDDED_VAULT='{"s":"WMkwvHsRx12KwAZpL+bGqA==","i":"oeyOB+oFki0eunB5","d":"Vq5d4xIu4rRKLg5yJUcd26enPc+JKZAPLBmzo80R63OqutHDk8r0M61ba9b7ZGmbcxrMW/0/iB7wVyM59k4/tuAMjAszCN+Ws59ymLeo0I+l0gdxoUx1prXkKFYStkCsl2v019PCA/h/XkVm7YaMiwGhGh6HKEhU7MI+yAWOXbW3rZlNvc6+BpfaLxqKEE387j36KG1kjWhVQjVUaibtrylU9Zd39GbSVa8qyt1Yo9D2dEIQbqmrM+oLBxRR"}';
 let vaultLocked=false;
 let pinErr="";
 
@@ -500,6 +500,15 @@ function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let 
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyForAgent(bid){
   var noteText=formatEMR(state.editing?state.editText:state.noteText);
+  // Strip ALL assumed/implant/added markers (any asterisk count)
+  noteText=noteText.replace(/\*{1,3}\s*ASSUMED(?:\s+FROM\s+\w+)?\s*\*{1,3}\s*/gi,"");
+  noteText=noteText.replace(/\*{1,3}\s*IMPLANT\s*\*{1,3}\s*/gi,"");
+  noteText=noteText.replace(/\*{1,3}\s*ADDED\s*\*{1,3}\s*/gi,"");
+  noteText=noteText.replace(/\*{1,3}\s*NOT EXAMINED[^*]*\*{1,3}\s*/gi,"");
+  // Ensure exam elements get their own lines
+  noteText=noteText.replace(/(?<!\n)\s*\b(General|Spine|Neurological|Motor|Sensory|Reflexes|SLR|Gait|Hoffmann|Spurling|Babinski|Clonus|Rectal|Perianal)\s*:/g,"\n$1:");
+  // Clean up trailing whitespace and multiple spaces
+  noteText=noteText.replace(/ {2,}/g," ").replace(/\n{3,}/g,"\n\n").trim();
   var icdRaw=state.billICD||"";
   var icd10_codes=[];
   icdRaw.split("\n").forEach(function(line){
