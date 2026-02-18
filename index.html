@@ -114,7 +114,8 @@ let API_KEY=localStorage.getItem("opnote-api-key")||"";
 (function(){const h=window.location.hash;if(h.startsWith("#key=")){const k=decodeURIComponent(h.slice(5));if(k.startsWith("sk-ant-")){API_KEY=k;localStorage.setItem("opnote-api-key",k);window.history.replaceState(null,"",window.location.pathname);setTimeout(()=>alert("API key saved!"),500);}}})();
 
 // ---- PIN VAULT (AES-GCM via Web Crypto) ----
-const VAULT_KEY="opnote-vault";const EMBEDDED_VAULT='{"s":"WMkwvHsRx12KwAZpL+bGqA==","i":"oeyOB+oFki0eunB5","d":"Vq5d4xIu4rRKLg5yJUcd26enPc+JKZAPLBmzo80R63OqutHDk8r0M61ba9b7ZGmbcxrMW/0/iB7wVyM59k4/tuAMjAszCN+Ws59ymLeo0I+l0gdxoUx1prXkKFYStkCsl2v019PCA/h/XkVm7YaMiwGhGh6HKEhU7MI+yAWOXbW3rZlNvc6+BpfaLxqKEE387j36KG1kjWhVQjVUaibtrylU9Zd39GbSVa8qyt1Yo9D2dEIQbqmrM+oLBxRR"}';
+const VAULT_KEY="opnote-vault";
+const EMBEDDED_VAULT=""; // ← paste encrypted blob here after setup
 let vaultLocked=false;
 let pinErr="";
 
@@ -273,78 +274,7 @@ function validateBilling(codes,noteText){
   return{warnings,fixes,correctedRVU:correctedRVU||null};
 }
 
-// ---- ICD-10 VALIDATOR ----
-function validateICD10(icdText,noteText){
-  if(!icdText||!noteText)return[];
-  const fixes=[];
-  const nU=(noteText||"").toUpperCase();
-  const nL=(noteText||"").toLowerCase();
-  const lines=icdText.split("\n").filter(l=>l.trim());
-  // Extract ICD codes
-  const codes=lines.map(l=>{const m=l.match(/([A-Z]\d{2,3}\.?\d{0,4}[A-Z]?)/i);return m?{code:m[1].toUpperCase(),line:l.trim()}:null;}).filter(Boolean);
-  // Body region detection from note
-  const hasLumbar=/lumbar|l[1-5]|lumbosacral/i.test(noteText);
-  const hasCervical=/cervical|c[2-7]|acdf/i.test(noteText);
-  const hasThoracic=/thoracic|t[1-9]|t1[0-2]/i.test(noteText);
-  const hasLung=/\blung\b|pulmonary metast|lung metast|lung cancer|pulmonary nod/i.test(noteText);
-  const hasArm=/\barm pain\b|upper extremity pain|shoulder pain/i.test(noteText);
-  const hasLeg=/\bleg pain\b|lower extremity pain|thigh pain|calf pain/i.test(noteText);
-  const hasMet=/metast|malignant|cancer|carcinoma|neoplasm|tumor|oncol|recurrence.*lesion/i.test(noteText);
-  const hasSpineMet=hasMet&&(hasLumbar||hasCervical||hasThoracic||/spine|spinal|vertebr/i.test(noteText));
-  const hasFootDrop=/foot drop|drop foot|tibialis anterior [0-4]\/5|EHL [0-4]\/5|peroneal/i.test(noteText);
-  const hasMyelopathy=/myelopath|cord compress|hoffmann|hyperreflex|clonus|babinski|spastic/i.test(noteText);
-  const hasCaudaEquina=/cauda equina|saddle|bowel.*bladder|urinary retention/i.test(noteText);
-  const hasFracture=/fracture|VCF|compression fracture|burst|kyphoplasty|corpectomy/i.test(noteText);
-  const hasRadiculopathy=/radiculop|radiating|sciatica|nerve root/i.test(noteText);
-  const hasStenosis=/stenosis/i.test(noteText);
-  const hasSpondylolisthesis=/spondylolisthesis|listhesis|anterolisthesis/i.test(noteText);
-  const hasPostOp=/post.?op|status post|s\/p|prior.*(surgery|fusion|decompression|corpectomy|laminectomy)/i.test(noteText);
-  const hasCarpalTunnel=/carpal tunnel/i.test(noteText);
-  const hasUlnarNeuropathy=/ulnar neuropath|cubital tunnel/i.test(noteText);
-  const hasPeronealNeuropathy=/peroneal neuropath/i.test(noteText);
-  const hasLeftSide=/\bleft\b/i.test(noteText);
-  const hasRightSide=/\bright\b/i.test(noteText);
-
-  codes.forEach(({code,line})=>{
-    // C78.xx — lung/respiratory mets — flag if no lung mentioned
-    if(/^C78/i.test(code)&&!hasLung)fixes.push({msg:"ICD-10 MISMATCH: "+code+" (lung/respiratory metastasis) — note does not mention lung involvement. For spinal metastasis use C79.51.",code,suggest:"C79.51"});
-    // M79.601/602 — arm pain for spine patients without arm pain
-    if(/^M79\.60[12]$/i.test(code)&&!hasArm)fixes.push({msg:"ICD-10 MISMATCH: "+code+" (arm pain) — not documented in note.",code});
-    // G83.84 — Todd's paralysis (post-seizure) — almost never correct for spine
-    if(/^G83\.84$/i.test(code))fixes.push({msg:"ICD-10 ERROR: G83.84 (Todd's paralysis) is post-seizure only. For foot drop use M21.37x, for nerve root compression use appropriate radiculopathy code.",code,suggest:hasFootDrop?"M21.37x":"G83.10"});
-    // C79.51 check — spine met should only be used if met mentioned
-    if(/^C79\.51$/i.test(code)&&!hasSpineMet)fixes.push({msg:"ICD-10 MISMATCH: C79.51 (spinal metastasis) — metastatic disease not documented.",code});
-    // Z51.0 — radiation therapy — only if radiation discussed
-    if(/^Z51\.0$/i.test(code)&&!/radiat|XRT|EBRT/i.test(noteText))fixes.push({msg:"ICD-10 QUESTIONABLE: Z51.0 (radiation therapy encounter) — radiation therapy not documented as being received.",code});
-    // Z48.89 — generic aftercare — flag when more specific code available
-    if(/^Z48\.89$/i.test(code)){
-      if(hasCarpalTunnel)fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 (other surgical aftercare) too generic — code the underlying condition. Carpal tunnel post-op → use G56.0x as primary.",code,suggest:hasLeftSide?"G56.02":hasRightSide?"G56.01":"G56.00"});
-      else if(hasPostOp&&/fusion|arthrodesis/i.test(noteText))fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 too generic for spinal fusion aftercare — use Z98.1 (arthrodesis status) + condition code.",code,suggest:"Z98.1"});
-      else fixes.push({msg:"ICD-10 SPECIFICITY: Z48.89 (other surgical aftercare) is non-specific — prefer coding the underlying condition being followed."});
-    }
-    // Laterality checks for radiculopathy
-    if(code==="M54.41"&&!/left/i.test(noteText)&&/right/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.41 is LEFT lumbar radiculopathy but note mentions right side.",code,suggest:"M54.42"});
-    if(code==="M54.42"&&!/right/i.test(noteText)&&/left/i.test(noteText))fixes.push({msg:"ICD-10 LATERALITY: M54.42 is RIGHT lumbar radiculopathy but note mentions left side.",code,suggest:"M54.41"});
-    // Carpal tunnel laterality
-    if(/^G56\.01$/i.test(code)&&!hasRightSide&&hasLeftSide)fixes.push({msg:"ICD-10 LATERALITY: G56.01 is RIGHT carpal tunnel but note describes left side.",code,suggest:"G56.02"});
-    if(/^G56\.02$/i.test(code)&&!hasLeftSide&&hasRightSide)fixes.push({msg:"ICD-10 LATERALITY: G56.02 is LEFT carpal tunnel but note describes right side.",code,suggest:"G56.01"});
-    // Region mismatch checks
-    if(/^M48\.02$/i.test(code)&&!hasCervical&&hasLumbar)fixes.push({msg:"ICD-10 REGION: M48.02 (cervical stenosis) but note describes lumbar pathology. Use M48.06.",code,suggest:"M48.06"});
-    if(/^M48\.06$/i.test(code)&&!hasLumbar&&hasCervical)fixes.push({msg:"ICD-10 REGION: M48.06 (lumbar stenosis) but note describes cervical pathology. Use M48.02.",code,suggest:"M48.02"});
-    if(/^M51\.1[67]$/i.test(code)&&!hasLumbar)fixes.push({msg:"ICD-10 REGION: "+code+" (lumbar disc) but lumbar pathology not documented.",code});
-    if(/^M50\.1[23]$/i.test(code)&&!hasCervical)fixes.push({msg:"ICD-10 REGION: "+code+" (cervical disc) but cervical pathology not documented.",code});
-  });
-
-  // Missing code suggestions
-  if(hasSpineMet&&!codes.some(c=>/^C79\.5/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Spinal metastasis documented but C79.51 not listed.",suggest:"C79.51"});
-  if(hasFootDrop&&!codes.some(c=>/^M21\.37|^G83\.1/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Foot drop documented but no foot drop code (M21.37x) listed.",suggest:"M21.37x"});
-  if(hasMyelopathy&&!codes.some(c=>/myelopath/i.test(c.line)||/^M47\.1|^G95/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Myelopathy documented but no myelopathy code listed.",suggest:"M47.12 or G95.20"});
-  if(hasCaudaEquina&&!codes.some(c=>/^G83\.4/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Cauda equina documented but G83.4 not listed.",suggest:"G83.4"});
-  if(hasCarpalTunnel&&!codes.some(c=>/^G56\.0/i.test(c.code)))fixes.push({msg:"ICD-10 MISSING: Carpal tunnel syndrome documented but G56.0x not listed.",suggest:hasLeftSide?"G56.02":hasRightSide?"G56.01":"G56.00"});
-  if(hasPostOp&&!codes.some(c=>/^Z98\.1|^Z48|^G56\.0/i.test(c.code)))fixes.push({msg:"ICD-10 CONSIDER: Post-operative status documented — consider Z98.1 (status post fusion) or condition-specific code."});
-
-  return fixes;
-}
+// ---- AUTH MODULE ----
 let policyEngine=null;
 let authState={payer:"",procedure:"",mriText:"",medsText:"",ptText:"",labsText:"",priorText:"",results:null,letter:"",phase:"",err:null};
 const AUTH_PAYERS=[{id:"cigna",name:"Cigna",color:"#2563eb"},{id:"aetna",name:"Aetna",color:"#7c3aed"},{id:"uhc",name:"UHC",color:"#059669"},{id:"other",name:"Other (Conservative)",color:"#475569"}];
@@ -554,7 +484,7 @@ function parseGaps(raw){if(!raw)return[];const gaps=[];let cur=null;raw.split("\
 function parseFlags(raw){if(!raw)return[];const flags=[];let cur=null;raw.split("\n").forEach(l=>{const t=l.trim();const m=t.match(/^(RED|YELLOW|GREEN):\s*(.*)/i);if(m){if(cur)flags.push(cur);cur={type:m[1].toUpperCase(),text:m[2].trim(),input:null};}else if(t.startsWith("INPUT_NEEDED:")&&cur)cur.input=t.slice(13).trim();else if(cur&&t)cur.text+="\n"+t;});if(cur)flags.push(cur);return flags;}
 function parseFinancial(raw){if(!raw)return null;const f={};const rm=raw.match(/TOTAL RVU:\s*([\d.]+)/i);if(rm)f.rvu=rm[1];const cm=raw.match(/CURRENT ESTIMATE:\s*\$?([\d,.\-$\s]+)/i);if(cm)f.current=cm[1].trim();const wm=raw.match(/WITH GAPS.*?:\s*\$?([\d,.\-$\s]+)/i);if(wm)f.potential=wm[1].trim();const cr=raw.match(/CAPTURE RATE:\s*([\d.%]+)/i);if(cr)f.capture=cr[1].trim();return Object.keys(f).length?f:null;}
 function parseBillFull(raw){
-  const clean=raw.replace(/\*{2,}/g,"").replace(/^BILLING ANALYSIS:?\s*\n/im,"");
+  const clean=raw.replace(/\*{2}(CODES|MODIFIERS|ICD-?10|BUNDLING|GAPS|FLAGS|PRE-AUTH[A-Z ]*|FINANCIAL)\*{2}:?/gi,"$1:");
   const sec={codes:"",modifiers:"",icd:"",bundling:"",gaps:"",flags:"",financial:"",preauth:"",mdm:""};
   const markers=[{key:"mdm",rx:/^E\/M MDM SCORING:\s*\n/im},{key:"codes",rx:/^CODES:\s*\n/im},{key:"modifiers",rx:/^MODIFIERS:\s*\n/im},{key:"icd",rx:/^ICD-?10:\s*\n/im},{key:"bundling",rx:/^BUNDLING:\s*\n/im},{key:"gaps",rx:/^GAPS:\s*\n/im},{key:"flags",rx:/^FLAGS:\s*\n/im},{key:"preauth",rx:/^PRE-AUTH[A-Z ]*:\s*\n/im},{key:"financial",rx:/^FINANCIAL:\s*\n/im}];
   const found=[];markers.forEach(m=>{const match=clean.match(m.rx);if(match)found.push({key:m.key,idx:match.index,len:match[0].length});});
@@ -565,19 +495,30 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){
-  let o=stripAll(stripBilling(t));
-  // Add double newline before ALL CAPS section headers
-  o=o.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");
-  // Add newline before PE sub-headers with colons that are run together
-  o=o.replace(/(?<!\n)\s*\b(General|Spine|Neurological|Motor|Sensory|Reflexes|SLR|Gait|Cervical|Lumbar|Thoracic|Hoffmann|Spurling|Babinski|Clonus|Rectal|Perianal|Upper [Ee]xtremit|Lower [Ee]xtremit|Cranial [Nn]erves|Strength|Tone|Coordination|Balance|Extremities|Cardiovascular|Pulmonary|Abdomen|Musculoskeletal|Skin|Mental [Ss]tatus)\s*:/g,"\n$1:");
-  // Handle exam findings WITHOUT colons (e.g. "Motor 5/5", "Sensory intact", "Hoffmann negative")
-  o=o.replace(/(?<!\n)[\s.]+\b(Motor\s+\d\/5|Sensory\s+(?:intact|diminished|absent)|Reflexes?\s+(?:patellar|biceps|triceps|achilles|brachioradialis|\d)|SLR\s+(?:negative|positive)|Hoffmann\s+(?:negative|positive)|Spurling\s+(?:negative|positive)|Babinski\s+(?:negative|positive|downgoing|upgoing)|Clonus\s+(?:negative|positive|absent|none|present)|Gait\s*(?:normal|antalgic|ataxic|requires|steady|unsteady|wide))/gi,"\n$1");
-  o=o.replace(/\n{3,}/g,"\n\n");
-  return o.trim();
-}
+function formatEMR(t){return stripAll(stripBilling(t)).replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n").replace(/\n{3,}/g,"\n\n").trim();}
 function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
+function copyForAgent(bid){
+  var noteText=formatEMR(state.editing?state.editText:state.noteText);
+  var icdRaw=state.billICD||"";
+  var icd10_codes=[];
+  icdRaw.split("\n").forEach(function(line){
+    var m=line.match(/([A-Z]\d{1,2}\.?\d{0,4})\s*[-\u2013\u2014:]\s*(.*)/i);
+    if(m)icd10_codes.push({code:m[1].trim(),description:m[2].trim()});
+  });
+  var payload={
+    _type:"opnote-emr-agent",
+    _timestamp:new Date().toISOString(),
+    note_type:state.nt,
+    note_text:noteText,
+    icd10_codes:icd10_codes,
+    primary_icd10:icd10_codes.length?icd10_codes[0].code:null,
+    surgeon:state.sn||"Diaz"
+  };
+  navigator.clipboard.writeText(JSON.stringify(payload)).catch(function(){});
+  var b=document.getElementById(bid);
+  if(b){var o=b.innerHTML;b.innerHTML="\u2705 Copied!";b.style.background="#059669";setTimeout(function(){if(b){b.innerHTML=o;b.style.background="";}},2000);}
+}
 
 // ---- SYSTEM PROMPT ----
 function getSYS(){return `You are OpNote Intelligence — neurosurgery note generator and billing engine.
@@ -589,7 +530,6 @@ RULES:
 - NO blanks, underscores, or square brackets.
 - NEVER output placeholder text: *EXAM NEEDED*, **fill in here**, [fill in], {description}, or any template artifact. If data is missing, generate clinically appropriate ***ASSUMED*** content instead.
 - Assumed: ***ASSUMED*** prefix. Missing implants: ***IMPLANT*** prefix. Added: ***ADDED*** prefix.
-- PHYSICAL EXAM FORMATTING: Each exam element (General, Spine, Motor, Sensory, Reflexes, SLR, Gait, Hoffmann, Spurling, Babinski, Clonus) MUST be on its own separate line. NEVER concatenate exam elements on a single line.
 - NEVER mark dates or today's date as ***ASSUMED***. Only mark clinical assumptions.
 - NEVER invent patient occupation, employer, specific activities, hobbies, or lifestyle details not stated in dictation. Only assume CLINICAL details (exam findings, durations, dates).
 - NEVER fabricate specific calendar dates for treatments. Use "per patient report" instead of invented dates.
@@ -609,18 +549,13 @@ NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4
 OPERATIVE NOTE PHYSICAL EXAM RULES:
 - ALL operative notes MUST include a filled PHYSICAL EXAMINATION section. NEVER leave *EXAM NEEDED*, **fill in here**, [fill in], or any placeholder/template text.
 - If dictation includes exam findings, use them exactly.
-- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis. EACH EXAM ELEMENT MUST BE ON ITS OWN LINE:
+- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis:
   PHYSICAL EXAMINATION:
-  General: Alert, oriented, in no acute distress. ***ASSUMED***
-  Neurological (procedure-appropriate, each on its own line):
-    Lumbar procedures →
-      Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). ***ASSUMED***
-      Sensory: Intact to light touch L2-S1 dermatomes bilaterally. ***ASSUMED***
-      Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
-    Cervical procedures →
-      Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). ***ASSUMED***
-      Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
-    If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
+    General: Alert, oriented, in no acute distress. ***ASSUMED***
+    Neurological (procedure-appropriate):
+    - Lumbar procedures → Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). Sensory: Intact to light touch L2-S1 dermatomes bilaterally. Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
+    - Cervical procedures → Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
+    - If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
 - NEVER output template artifacts: any text in curly braces, "EXAM NEEDED", "fill in", "[blank]", or instruction text must be replaced with appropriate assumed findings.
 - The assumed exam goes BEFORE the TECHNIQUE section.
 CLINIC NOTE RULES:
@@ -637,31 +572,15 @@ CLINIC NOTE RULES:
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
-  EACH EXAM ELEMENT MUST BE ON ITS OWN LINE. Never run General/Spine/Motor/Sensory/Reflexes together on one line.
   PHYSICAL EXAMINATION:
-  General: Alert, oriented, no acute distress. ***ASSUMED***
-  Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
-  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals, EACH ON ITS OWN LINE:
-    Lumbar complaint →
-      Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). ***ASSUMED***
-      Sensory: Intact to light touch L2-S1 dermatomes bilaterally. ***ASSUMED***
-      Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally. ***ASSUMED***
-      SLR: Negative bilaterally. ***ASSUMED***
-    Cervical complaint →
-      Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics). ***ASSUMED***
-      Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally. ***ASSUMED***
-      Hoffmann: Negative bilaterally. ***ASSUMED***
-      Spurling: Negative bilaterally. ***ASSUMED***
-    Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Each on own line:
-      Rectal tone: ***NOT EXAMINED — DOCUMENT***
-      Perianal sensation: ***NOT EXAMINED — DOCUMENT***
-      Post-void residual: ***NOT EXAMINED — DOCUMENT***
-    Myelopathy concern → DO NOT assume normal. Each on own line:
-      Gait: ***NOT EXAMINED — DOCUMENT***
-      Hoffmann: ***NOT EXAMINED — DOCUMENT***
-      Babinski: ***NOT EXAMINED — DOCUMENT***
-      Clonus: ***NOT EXAMINED — DOCUMENT***
-    If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
+    General: Alert, oriented, no acute distress. ***ASSUMED***
+    Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
+  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals:
+    - Lumbar complaint → Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius) ***ASSUMED***, Sensory: Intact to light touch L2-S1 dermatomes bilaterally ***ASSUMED***, Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally ***ASSUMED***, SLR: Negative bilaterally ***ASSUMED***
+    - Cervical complaint → Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics) ***ASSUMED***, Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***, Hoffmann: Negative bilaterally ***ASSUMED***, Spurling: Negative bilaterally ***ASSUMED***
+    - Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Use: Rectal tone: ***NOT EXAMINED — DOCUMENT***, Perianal sensation: ***NOT EXAMINED — DOCUMENT***, Post-void residual: ***NOT EXAMINED — DOCUMENT***
+    - Myelopathy concern → DO NOT assume normal. Use: Gait: ***NOT EXAMINED — DOCUMENT***, Hoffmann: ***NOT EXAMINED — DOCUMENT***, Babinski: ***NOT EXAMINED — DOCUMENT***, Clonus: ***NOT EXAMINED — DOCUMENT***
+    - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
   CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
@@ -749,8 +668,6 @@ CODES:
 MODIFIERS: [with justification]
 ICD-10: [one per line]
 ICD-10 ACCURACY RULES:
-CRITICAL: EVERY ICD-10 code MUST directly relate to conditions documented in the note. NEVER hallucinate codes for body parts, conditions, or organs not discussed. If unsure of exact code, describe the condition and use "unspecified" variant rather than guessing wrong.
-DEGENERATIVE SPINE:
 - Lumbar radiculopathy = M54.41 (left), M54.42 (right), M54.40 (unspecified)
 - Cervical radiculopathy = M54.12 (cervical), M54.13 (cervicothoracic)
 - Lumbar disc herniation with radiculopathy = M51.16 (lumbar), M51.17 (lumbosacral)
@@ -759,52 +676,8 @@ DEGENERATIVE SPINE:
 - Lumbar stenosis = M48.06 (lumbar), M48.07 (lumbosacral)
 - Cervical stenosis = M48.02 (cervical)
 - Spondylolisthesis = M43.16 (lumbar), M43.12 (cervical)
-SPINAL METASTASIS/ONCOLOGY:
-- Secondary malignant neoplasm of vertebral column = C79.51 (NEVER use C78.xx lung codes for spine mets)
-- Secondary malignant neoplasm of spinal cord/meninges = C79.49
-- Primary rectal cancer = C20
-- Primary lung cancer = C34.90 (unspecified), C34.11 (right upper), C34.12 (left upper)
-- Primary breast cancer = C50.919 (unspecified)
-- Primary prostate cancer = C61
-- Primary renal cancer = C64.9
-- Pathological fracture due to neoplasm = M84.58XA (lumbar), M84.58XD (subsequent)
-- Always code BOTH the metastasis site (C79.51 for spine) AND the primary cancer
-NEUROLOGICAL DEFICITS:
-- Foot drop = M21.372 (left), M21.371 (right), M21.379 (unspecified)
-- Wrist drop = M21.332 (left), M21.331 (right)
-- Monoplegia of lower limb = G83.10 (unspecified), G83.12 (left), G83.11 (right)
-- Paraplegia = G82.20 (unspecified)
-- Neurogenic bladder = N31.9
-- Cauda equina syndrome = G83.4
-- Myelopathy NOS = G95.89
-COMPRESSION FRACTURES:
-- Osteoporotic VCF thoracic = M80.08XA (initial), M80.08XD (subsequent)
-- Osteoporotic VCF lumbar = M80.08XA
-- Pathological fracture = M84.58XA (initial encounter)
-- Traumatic fracture lumbar = S32.009A (initial)
-POST-SURGICAL/STATUS:
-- Status post spinal fusion = Z98.1
-- Pseudarthrosis after fusion = M96.0
-- Adjacent segment disease = M47.817 (lumbar spondylosis with radiculopathy after prior fusion)
-- AFTERCARE CODING RULE: Do NOT default to Z48.89 (other specified surgical aftercare). Instead code the UNDERLYING CONDITION being followed:
-  - Post carpal tunnel release → G56.01 (right) or G56.02 (left) as primary dx
-  - Post spinal fusion → Z98.1 (arthrodesis status) + condition (M54.5, M48.06, etc.)
-  - Post laminectomy → condition being treated (stenosis, herniation, etc.)
-  - Z48.89 is ONLY appropriate when no more specific code exists
-PERIPHERAL NERVE / EXTREMITY:
-- Carpal tunnel syndrome = G56.01 (right), G56.02 (left), G56.00 (unspecified)
-- Ulnar neuropathy at elbow = G56.21 (right), G56.22 (left)
-- Cubital tunnel syndrome = G56.21 (right), G56.22 (left)
-- Peroneal neuropathy = G57.31 (right), G57.32 (left)
-- Tarsal tunnel syndrome = G57.51 (right), G57.52 (left)
-- Meralgia paresthetica = G57.11 (right), G57.12 (left)
-PROHIBITED:
 - NEVER use M25.5xx (joint pain) for radicular leg pain. Use M79.604 (left leg) or M79.601 (right leg) only if needed.
 - NEVER use M79.2 for radiculopathy. Use M54.4x codes.
-- NEVER use C78.xx (lung/respiratory mets) unless lung metastasis is specifically documented.
-- NEVER use M79.601/M79.602 (arm pain) for spine patients unless arm pain specifically documented.
-- NEVER use G83.84 (Todd's paralysis) for foot drop or weakness from compression — Todd's is post-seizure only.
-- NEVER code conditions for body regions not discussed in the note.
 BUNDLING: [notes]
 GAPS:
 CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY for clinic/consult notes):
@@ -833,7 +706,7 @@ const SMART_QS={critical:[{q:"Total critical care time?",def:"45 minutes"}],oper
 let state={
   view:"input",text:"",nt:new Date().getDay()===5?"operative":"clinic",clinicVisit:"new",clinicPt:"new",
   noteText:"",billRaw:"",gaps:[],flags:[],financial:null,
-  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",icdFixes:[],
+  billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
   cases:ls(SK,[]),selCase:null,addend:"",caseTab:"all",
   wk:ls("opnote-wkey",""),ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
@@ -958,10 +831,9 @@ function reopenCase(caseId,noteIdx){
   const dn=notes[ni];
   const sec=parseBillFull(dn.billRaw||"");
   const bv=validateBilling(sec.codes,dn.note);
-  const icdV=validateICD10(sec.icd,dn.note);
   setState({
     view:"output",noteText:dn.note||"",billRaw:dn.billRaw||"",
-    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,icdFixes:icdV,
+    billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,
     gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),
     billingValidation:bv,nt:dn.type||"operative",text:dn.dict||"",
     convo:[{role:"user",content:"DICTATION:\n\n"+(dn.dict||"")},{role:"assistant",content:dn.note||""}],
@@ -1120,8 +992,7 @@ async function processCase(){
       const updNote=injectMDM(state.noteText,sec.codes,state.nt);
       if(updNote!==state.noteText)state.noteText=updNote;
       const bv=validateBilling(sec.codes,state.noteText);
-      const icdV=validateICD10(sec.icd,state.noteText);
-      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,icdFixes:icdV,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
+      setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
     }catch(be){setState({err:"Billing failed: "+be.message,phase:"done"});}
     // Save case
     const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
@@ -1301,8 +1172,6 @@ function renderMDM(el,text){
   });
 }
 
-function updProcBtn(){const b=document.getElementById("procBtn");if(!b)return;const has=state.text.trim();b.disabled=!has;b.style.opacity=has?"1":"0.4";b.style.background=has?"linear-gradient(135deg,#1d4ed8,#2563eb)":"#1e293b";}
-
 // ============================================================
 // RENDER
 // ============================================================
@@ -1447,10 +1316,10 @@ function render(){
       h+=`</div>`;
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
-    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value;updProcBtn()">${esc(s.text)}</textarea>`;
+    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value">${esc(s.text)}</textarea>`;
     if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';render()">Clear</button></div>`;}
     if(s.linkedTo){const lc=s.cases.find(c=>c.id===s.linkedTo);if(lc)h+=`<div style="background:#1e3a5f30;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#60a5fa">🔗 Linked to: ${esc(lc.proc)} <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({linkedTo:null})">✕</button></div>`;}
-    h+=`<button id="procBtn" class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
+    h+=`<button class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
   }
 
@@ -1512,7 +1381,7 @@ function render(){
     }
     // Note
     if(s.noteText){
-      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">📋 Copy → EMR</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">📋 Copy → EMR</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
       h+=`<div class="card" style="border-left:4px solid #3b82f6"><div class="card-h"><span class="title">📋 Note</span><div style="display:flex;gap:6px">`;
       if(!s.editing)h+=`<button class="btn" style="background:#334155" onclick="state.editText=state.noteText;state.editing=true;render()">✏️</button>`;
       else h+=`<button class="btn" style="background:#059669" onclick="state.noteText=state.editText;state.editing=false;render()">💾</button><button class="btn" style="background:#7f1d1d" onclick="state.editing=false;render()">✕</button>`;
@@ -1543,7 +1412,6 @@ function render(){
     if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
     if(s.billMod)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📎 Modifiers</span></div><div class="card-b" id="modBox"></div></div>`;
     if(s.billICD)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">🏥 ICD-10</span></div><div class="card-b" id="icdBox"></div></div>`;
-    if(s.icdFixes&&s.icdFixes.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 ICD-10 Validator</span><span style="font-size:11px;color:#fca5a5">${s.icdFixes.length} issue${s.icdFixes.length>1?"s":""}</span></div><div class="card-b">`;s.icdFixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}${f.suggest?` <span style="color:#86efac;font-weight:700">→ Use ${esc(f.suggest)}</span>`:""}</div>`;});h+=`</div></div>`;}
     if(s.billBundle)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📦 Bundling</span></div><div class="card-b" id="bundleBox"></div></div>`;
     if(s.billPreauth)h+=`<div class="card" style="border-left:4px solid #a78bfa"><div class="card-h"><span class="title">📋 Pre-Authorization</span></div><div class="card-b" id="preauthBox"></div></div>`;
     // Gaps
