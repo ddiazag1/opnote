@@ -494,7 +494,7 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes)(?=[\s:.])/g,".\n$1");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");return s.trim();}
+function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");return s.trim();}
 function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
@@ -548,19 +548,10 @@ MDM COMPLEXITY LINE (non-operative): first line = single sentence.
 MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NEUROMONITORING (ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
 OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NEUROMONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
 CLOSURE DEFAULT: Unless dictation specifies otherwise, ALWAYS include closure in the TECHNIQUE section ending AND in the CLOSURE section: "The wound was irrigated copiously. Hemostasis was achieved. The fascia was closed with 0 Vicryl sutures. The subcutaneous layer was closed with 2-0 Vicryl sutures. The skin was closed with 4-0 Monocryl in a running subcuticular fashion. Sterile dressings were applied." Mark ***ASSUMED*** if not dictated.
-NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4h. Single level=q4h. Critical=q1h continuous. Clinic=No neurochecks.
+NEUROCHECK FREQ: No neurocheck schedule in any note type. DISPOSITION for op notes: "The patient tolerated the procedure well and was transferred to recovery in stable condition." followed by activity restrictions and follow-up only.
 OPERATIVE NOTE PHYSICAL EXAM RULES:
-- ALL operative notes MUST include a filled PHYSICAL EXAMINATION section. NEVER leave *EXAM NEEDED*, **fill in here**, [fill in], or any placeholder/template text.
-- If dictation includes exam findings, use them exactly.
-- If dictation has NO exam or PARTIAL exam, auto-fill a complete, clinically appropriate exam with ***ASSUMED*** markers based on the procedure and diagnosis:
-  PHYSICAL EXAMINATION:
-    General: Alert, oriented, in no acute distress. ***ASSUMED***
-    Neurological (procedure-appropriate):
-    - Lumbar procedures → Pre-operative motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius). Sensory: Intact to light touch L2-S1 dermatomes bilaterally. Reflexes: 2+ patellar, 2+ Achilles bilaterally. ***ASSUMED***
-    - Cervical procedures → Pre-operative motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, finger abduction). Reflexes: 2+ biceps, triceps, brachioradialis bilaterally. ***ASSUMED***
-    - If HPI or indication mentions weakness/deficit, adjust assumed exam to match: e.g. "Left EHL 4/5 ***ASSUMED FROM HPI***, right 5/5"
-- NEVER output template artifacts: any text in curly braces, "EXAM NEEDED", "fill in", "[blank]", or instruction text must be replaced with appropriate assumed findings.
-- The assumed exam goes BEFORE the TECHNIQUE section.
+- OPERATIVE NOTES do NOT include a PHYSICAL EXAMINATION section. Skip PE entirely for op notes.
+- Physical exam is only for clinic, consult, and progress notes.
 CLINIC NOTE RULES:
 - MANDATORY FIRST LINE for ALL clinic notes: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
   Examples: "NEW PATIENT — MODERATE COMPLEXITY"
