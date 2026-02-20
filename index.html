@@ -465,7 +465,7 @@ async function analyzeImage(file,target){
 function pickImage(target){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])analyzeImage(inp.files[0],target||"text");};inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";document.body.appendChild(inp);setTimeout(()=>{inp.click();},100);setTimeout(()=>{try{inp.remove();}catch{}},120000);}
 
 // ---- HELPERS ----
-function stripAll(t){return(t||"").replace(/\*[^*]+\*/g,"").replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"").replace(/\*\*([^*]+)\*\*/g,"$1").replace(/#{1,4}\s*/g,"").replace(/---+/g,"").replace(/\n{3,}/g,"\n\n").replace(/  +/g," ");}
+function stripAll(t){return(t||"").replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,"").replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"").replace(/\*\*([^*]+)\*\*/g,"$1").replace(/#{1,4}\s*/g,"").replace(/---+/g,"").replace(/\n{3,}/g,"\n\n").replace(/  +/g," ");}
 function stripBilling(t){return(t||"").replace(/\n*BILLING ANALYSIS:[\s\S]*$/i,"").replace(/\n*PRIMARY PROCEDURES:[\s\S]*$/i,"").trim();}
 function dedupNote(t){if(!t)return t;const headers=["PREOPERATIVE DIAGNOSIS","POSTOPERATIVE DIAGNOSIS","PROCEDURE","INDICATIONS","TECHNIQUE","ASSESSMENT AND PLAN","HISTORY OF PRESENT ILLNESS","PHYSICAL EXAMINATION","DISPOSITION"];let out=t;headers.forEach(h=>{const rx=new RegExp("(^|\\n)("+h+"[:\\s])","gi");const matches=[...out.matchAll(rx)];if(matches.length>1){out=out.slice(0,matches[0].index)+out.slice(matches[1].index);}});return out.trim();}
 const INC_SUFFIX="\n\nCRITICAL: Output ONLY the single updated note. REPLACE changed sections in-place. Do NOT append or duplicate. One note only.";
@@ -501,7 +501,7 @@ function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>
 function copyForAgent(bid){
   var noteText=formatEMR(state.editing?state.editText:state.noteText);
   // Strip *assumed xxx* and any *xxx* placeholders
-  noteText=noteText.replace(/\*[^*]+\*/g,'').replace(/  +/g,' ').trim();
+  noteText=noteText.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,'').replace(/  +/g,' ').trim();
   var icdRaw=state.billICD||"";
   var icd10_codes=[];
   icdRaw.split("\n").forEach(function(line){
@@ -538,7 +538,7 @@ RULES:
 - NEVER put billing codes/CPT/RVU in the clinical note body. Billing goes ONLY in separate billing analysis.
 - First line = clinical content. No preamble.
 - OPERATIVE NOTES must include "SURGEON: ${state.sn||"Diaz"}" and "ASSISTANTS: None" (unless specified).
-- OPERATIVE NOTES ONLY: include "ATTENDING: ${state.sn||"Diaz"}". Do NOT include ATTENDING/SURGEON in clinic/consult/progress/critical.
+- OPERATIVE NOTES ONLY: Do NOT include "ATTENDING:" line. Only use "SURGEON: ${state.sn||"Diaz"}". Do NOT include ATTENDING or SURGEON lines in clinic/consult/progress/critical notes.
 QUESTIONS (max 3, only if changes PRIMARY CPT):
 Q: [question]
 DEFAULT: [assumption]
@@ -547,6 +547,7 @@ Then ALWAYS produce complete note.
 MDM COMPLEXITY LINE (non-operative): first line = single sentence.
 MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NEUROMONITORING (ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
 OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NEUROMONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
+CLOSURE DEFAULT: Unless dictation specifies otherwise, ALWAYS include closure in the TECHNIQUE section ending AND in the CLOSURE section: "The wound was irrigated copiously. Hemostasis was achieved. The fascia was closed with 0 Vicryl sutures. The subcutaneous layer was closed with 2-0 Vicryl sutures. The skin was closed with 4-0 Monocryl in a running subcuticular fashion. Sterile dressings were applied." Mark ***ASSUMED*** if not dictated.
 NEUROCHECK FREQ: Complex=q1h x4h then q2h x8h then q4h. Standard=q2h x8h then q4h. Single level=q4h. Critical=q1h continuous. Clinic=No neurochecks.
 OPERATIVE NOTE PHYSICAL EXAM RULES:
 - ALL operative notes MUST include a filled PHYSICAL EXAMINATION section. NEVER leave *EXAM NEEDED*, **fill in here**, [fill in], or any placeholder/template text.
