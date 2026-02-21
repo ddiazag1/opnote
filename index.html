@@ -465,7 +465,35 @@ async function analyzeImage(file,target){
 function pickImage(target){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=()=>{if(inp.files[0])analyzeImage(inp.files[0],target||"text");};inp.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0";document.body.appendChild(inp);setTimeout(()=>{inp.click();},100);setTimeout(()=>{try{inp.remove();}catch{}},120000);}
 
 // ---- HELPERS ----
-function stripAll(t){return(t||"").replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,"").replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"").replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"").replace(/\*\*([^*]+)\*\*/g,"$1").replace(/#{1,4}\s*/g,"").replace(/---+/g,"").replace(/\n{3,}/g,"\n\n").replace(/  +/g," ");}
+function stripAll(t){return(t||"")
+.replace(/```[\s\S]*?```/g,"")
+.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,"$1")
+.replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"")
+.replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"")
+.replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"")
+.replace(/\*{2,3}\s*ASSUMED FROM HPI\s*\*{2,3}\s*/gi,"")
+.replace(/\*{2,3}\s*NOT EXAMINED — DOCUMENT\s*\*{2,3}\s*/gi,"[DOCUMENT]")
+.replace(/\*\*([^*]+)\*\*/g,"$1")
+.replace(/`([^`]+)`/g,"$1")
+.replace(/\[([^\]]+)\]\([^)]+\)/g,"$1")
+.replace(/__([^_]+)__/g,"$1")
+.replace(/(?<![a-zA-Z])_([^_]+)_(?![a-zA-Z])/g,"$1")
+.replace(/~~([^~]+)~~/g,"$1")
+.replace(/^\s*>\s?/gm,"")
+.replace(/#{1,4}\s*/g,"")
+.replace(/---+/g,"")
+.replace(/\n{3,}/g,"\n\n")
+.replace(/  +/g," ");}
+function countMarkers(t){if(!t)return 0;return((t.match(/\*{2,3}\s*(ASSUMED|IMPLANT|ADDED|ASSUMED FROM HPI|NOT EXAMINED — DOCUMENT)\s*\*{2,3}/gi))||[]).length;}
+function stripMarkers(){
+  state.noteText=state.noteText
+    .replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"")
+    .replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"")
+    .replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"")
+    .replace(/\*{2,3}\s*ASSUMED FROM HPI\s*\*{2,3}\s*/gi,"")
+    .replace(/\*{2,3}\s*NOT EXAMINED — DOCUMENT\s*\*{2,3}\s*/gi,"[DOCUMENT]");
+  render();
+}
 function stripBilling(t){return(t||"").replace(/\n*BILLING ANALYSIS:[\s\S]*$/i,"").replace(/\n*PRIMARY PROCEDURES:[\s\S]*$/i,"").trim();}
 function dedupNote(t){if(!t)return t;const headers=["PREOPERATIVE DIAGNOSIS","POSTOPERATIVE DIAGNOSIS","PROCEDURE","INDICATIONS","TECHNIQUE","ASSESSMENT AND PLAN","HISTORY OF PRESENT ILLNESS","PHYSICAL EXAMINATION","DISPOSITION"];let out=t;headers.forEach(h=>{const rx=new RegExp("(^|\\n)("+h+"[:\\s])","gi");const matches=[...out.matchAll(rx)];if(matches.length>1){out=out.slice(0,matches[0].index)+out.slice(matches[1].index);}});return out.trim();}
 const INC_SUFFIX="\n\nCRITICAL: Output ONLY the single updated note. REPLACE changed sections in-place. Do NOT append or duplicate. One note only.";
@@ -494,14 +522,14 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");return s.trim();}
-function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
+function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cranial Nerves|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
+function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<br><b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});html=html.replace(/^<br>/,"");plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
 function copyForAgent(bid){
   var noteText=formatEMR(state.editing?state.editText:state.noteText);
   // Strip *assumed xxx* and any *xxx* placeholders
-  noteText=noteText.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,'').replace(/  +/g,' ').trim();
+  noteText=noteText.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,'$1').replace(/  +/g,' ').trim();
   var icdRaw=state.billICD||"";
   var icd10_codes=[];
   icdRaw.split("\n").forEach(function(line){
@@ -539,6 +567,13 @@ RULES:
 - First line = clinical content. No preamble.
 - OPERATIVE NOTES must include "SURGEON: ${state.sn||"Diaz"}" and "ASSISTANTS: None" (unless specified).
 - OPERATIVE NOTES ONLY: Do NOT include "ATTENDING:" line. Only use "SURGEON: ${state.sn||"Diaz"}". Do NOT include ATTENDING or SURGEON lines in clinic/consult/progress/critical notes.
+WRITING STYLE (ANTI-AI DETECTION):
+- Write in telegraphic surgical dictation style — concise, direct, no filler.
+- Use standard abbreviations: pt, bilat, b/l, w/, s/p, c/o, r/o, EBL, OR, PACU, IVF, SCDs, etc.
+- Vary sentence structure and length. Mix short declarative sentences with longer descriptive ones.
+- NEVER use these AI-giveaway phrases: "tolerated the procedure well", "Attention was then turned to", "The area was prepped and draped in the usual sterile fashion", "Subsequently", "was subsequently extubated", "The operative field was inspected", "It is important to note", "A meticulous", "was carefully", "was meticulously".
+- Use active voice when possible: "Irrigated wound" not "The wound was irrigated".
+- Match the dictating surgeon's verbosity level — if dictation is terse, note should be terse.
 QUESTIONS (max 3, only if changes PRIMARY CPT):
 Q: [question]
 DEFAULT: [assumption]
@@ -547,8 +582,20 @@ Then ALWAYS produce complete note.
 MDM COMPLEXITY LINE (non-operative): first line = single sentence.
 MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NEUROMONITORING (ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
 OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NEUROMONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
-CLOSURE DEFAULT: Unless dictation specifies otherwise, ALWAYS include closure in the TECHNIQUE section ending AND in the CLOSURE section: "The wound was irrigated copiously. Hemostasis was achieved. The fascia was closed with 0 Vicryl sutures. The subcutaneous layer was closed with 2-0 Vicryl sutures. The skin was closed with 4-0 Monocryl in a running subcuticular fashion. Sterile dressings were applied." Mark ***ASSUMED*** if not dictated.
-NEUROCHECK FREQ: No neurocheck schedule in any note type. DISPOSITION for op notes: "The patient tolerated the procedure well and was transferred to recovery in stable condition." followed by activity restrictions and follow-up only.
+OPERATIVE NOTE DETAIL RULES:
+- LATERALITY: ALWAYS state laterality explicitly in PROCEDURE line and TECHNIQUE opening: "Left-sided approach" or "Right L4-5".
+- IMPLANTS: List EVERY implant with: manufacturer (if stated or ***IMPLANT***), size, level. Format: "L4 pedicle screw 6.5x45mm, L5 pedicle screw 7.0x50mm, 5.5mm titanium rod, PEEK cage 10mm ***IMPLANT***". Never say "pedicle screws were placed" without specifics.
+- IONM: If neuromonitoring mentioned: "IONM: SSEPs and MEPs stable throughout. No alerts." If NOT mentioned, omit section entirely (do NOT assume).
+- SPECIMENS: If tissue removed: "Disc material / ligamentum flavum / bone / tumor sent to pathology." If no tissue: "None."
+- DRAINS: State type, location, and output: "JP drain to subfascial space, on bulb suction." If no drain: "None."
+- FLUIDS/BLOOD PRODUCTS: EBL: state in mL (numeric). If not dictated: "***ASSUMED*** Minimal, <50 mL". Include crystalloid total if mentioned.
+- POSITIONING: For spine: include table type (Jackson, OSI), Mayfield pins if cervical, padding of pressure points, eye protection. Concise: "Prone on Jackson table, Mayfield pins, all pressure points padded, eyes taped."
+- ANTIBIOTICS: Name and dose: "Ancef 2g IV within 60 min of incision" not just "Antibiotics were given." If not dictated: "Ancef 2g IV ***ASSUMED***"
+- COUNTS: "Correct x2" — never "All instrument and sponge counts were verified and found to be correct."
+CLOSURE DEFAULT: Unless dictation specifies otherwise: "Closure: Copious irrigation. Hemostasis obtained. Fascia closed w/ 0 Vicryl. Subcutaneous: 2-0 Vicryl. Skin: 4-0 Monocryl running subcuticular. Dermabond applied. Sterile dressing. ***ASSUMED***"
+DISPOSITION DEFAULT: "To PACU in stable condition. Neuro intact. Activity: cervical collar / lumbar precautions per protocol. Follow-up in 2 weeks."
+- For closure: state specific method concisely. NOT full verbose sentences.
+NEUROCHECK FREQ: No neurocheck schedule in any note type.
 OPERATIVE NOTE PHYSICAL EXAM RULES:
 - OPERATIVE NOTES do NOT include a PHYSICAL EXAMINATION section. Skip PE entirely for op notes.
 - Physical exam is only for clinic, consult, and progress notes.
@@ -564,6 +611,9 @@ CLINIC NOTE RULES:
     - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
     - Post-op routine check → LOW or MODERATE COMPLEXITY
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
+- ALLERGIES: Include ALLERGIES section in every clinic note. If not dictated: "ALLERGIES: NKDA ***ASSUMED***" or "Per chart review."
+- CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. If not dictated: "CURRENT MEDICATIONS: Per chart review."
+- ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
   PHYSICAL EXAMINATION:
@@ -577,16 +627,29 @@ CLINIC NOTE RULES:
     - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
   CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
+- REVIEW OF SYSTEMS: Include in all clinic notes. If not dictated, use: "ROS: Positive for [relevant symptoms from HPI]. Negative for weakness, numbness, tingling, gait difficulty, balance problems, headache, dizziness, bowel/bladder dysfunction, fever, chills, night sweats, unexplained weight loss, bilateral symptoms, chest pain, shortness of breath."
+- PLAN STRUCTURE FOR SURGICAL CANDIDATES:
+  PLAN:
+  1. Discussed diagnosis, natural history, and treatment options including continued conservative management, injections, and surgical intervention.
+  2. Risks discussed: [procedure-specific risks]. Benefits and alternatives reviewed.
+  3. Recommend [procedure] at [level(s)].
+  4. Pre-op: [labs, clearances, imaging].
+  5. RTC for surgery scheduling.
 - TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
 - Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
 - Do NOT invent patient occupation, hobbies, or specific activities not mentioned in dictation.
 - NEVER fabricate specific dates for treatments. If dates not given, say "per patient" not invented dates.
 - Focus Q:/DEFAULT: on: duration of conservative treatments, imaging date, and follow-up interval ONLY.
-- Include REVIEW OF SYSTEMS in all clinic notes. If not dictated, use: "ROS: Positive for [relevant symptoms from HPI]. Negative for bowel/bladder dysfunction, fever, chills, night sweats, unexplained weight loss, bilateral symptoms, chest pain, shortness of breath."
 - Include PAST MEDICAL/SURGICAL HISTORY. If not dictated: "PMH: Per chart review" not "ASSUMED unremarkable".
 - Include FAMILY HISTORY if new patient. If not dictated: "FAMILY HISTORY: Noncontributory"
 - Include SOCIAL HISTORY if new patient. If not dictated: "SOCIAL HISTORY: Per chart review. Smoking status documented."
+PROGRESS NOTE RULES:
+- Support SOAP structure: Subjective, Objective, Assessment, Plan.
+- If dictation is structured as SOAP, follow that format.
+CRITICAL CARE NOTE RULES:
+- Include time documentation: "Total critical care time: __ minutes, excluding separately billable procedures."
+- If time not dictated, use: "Total critical care time: ***ASSUMED*** minutes."
 CODE-SPECIFIC:
 1. REGION from UPPERMOST level: C=22600, T=22610, L=22612. 22614=each additional.
 2. SEGMENTS=vertebrae minus 1. Instrumentation: 22840(1-2), 22842(3-6), 22843(7-12), 22844(13+).
@@ -1081,6 +1144,20 @@ async function applyVerifyFix(idx){
   }
 }
 
+async function rerunBilling(){
+  if(!state.noteText||!API_KEY)return;
+  setState({phase:"billing",err:null});
+  try{
+    const sysPrompt=state._sysPrompt||getSYS()+"\nNOTE TYPE: "+(TYPES[state.nt]?.l||state.nt)+"\n";
+    const msgs=[{role:"user",content:"DICTATION:\n\n"+(state.text||"").trim()},{role:"assistant",content:state.noteText},{role:"user",content:P2}];
+    const{txt:bRaw}=await callC(msgs,2,sysPrompt);
+    const sec=parseBillFull(bRaw);
+    const updNote=injectMDM(state.noteText,sec.codes,state.nt);
+    if(updNote!==state.noteText)state.noteText=updNote;
+    const bv=validateBilling(sec.codes,state.noteText);
+    setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done",verifyItems:null,verifyCorrected:"",verifyRVU:""});
+  }catch(e){setState({err:"Re-run billing failed: "+e.message,phase:"done"});}
+}
 function sendToCoder(noteT,billR){
   const sec=parseBillFull(billR);const clean=stripAll(stripBilling(noteT));
   let out="CASE - "+TODAY+"\n\n"+clean+"\n\nCPT CODES:\n"+(sec.codes||"");
@@ -1198,10 +1275,11 @@ function render(){
     if(lsWK&&!s.wk){try{s.wk=JSON.parse(lsWK);}catch{s.wk=lsWK;}}
   }
 
-  // Phase-stuck recovery: if loading for >90s, auto-clear
+  // Phase-stuck recovery: warning at 30s, auto-clear at 90s
+  let _phaseWarn=false;
   if(isL){
     if(!state._phaseStart)state._phaseStart=Date.now();
-    else if(Date.now()-state._phaseStart>90000){state.phase="";state._phaseStart=null;}
+    else{const elapsed=Date.now()-state._phaseStart;if(elapsed>90000){state.phase="";state._phaseStart=null;}else if(elapsed>30000)_phaseWarn=true;}
   }else{state._phaseStart=null;}
   const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check..."};
   let h="";
@@ -1364,7 +1442,7 @@ function render(){
 
   // ---- OUTPUT VIEW ----
   if(s.view==="output"){
-    if(isL)h+=`<div class="ld">${ph[s.phase]||"Processing..."}</div>`;
+    if(isL){h+=`<div class="ld">${ph[s.phase]||"Processing..."}`;if(_phaseWarn)h+=`<div style="margin-top:6px;font-size:11px;color:#f59e0b">Taking longer than expected... <button style="background:#7f1d1d;color:#fca5a5;border:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="state.phase='';state._phaseStart=null;render()">Cancel</button></div>`;h+=`</div>`;}
     if(s.tStart){h+=`<div class="tt">`;if(s.tNote)h+=`Note: <span>${fmtTime(s.tNote-s.tStart)}</span>`;if(s.tCopy)h+=` · Copy: <span>${fmtTime(s.tCopy-s.tStart)}</span>`;h+=`</div>`;}
     // Questions
     if(s.questions.length){
@@ -1375,8 +1453,11 @@ function render(){
     }
     // Note
     if(s.noteText){
-      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">📋 Copy → EMR</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
+      const _mc=countMarkers(s.editing?s.editText:s.noteText);
+      const _copyLabel=_mc>0?`📋 Copy → EMR (${_mc} marked)`:`📋 Copy → EMR ✓`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">${_copyLabel}</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
       h+=`<div class="card" style="border-left:4px solid #3b82f6"><div class="card-h"><span class="title">📋 Note</span><div style="display:flex;gap:6px">`;
+      if(_mc>0)h+=`<button class="btn" style="background:#b45309;font-size:10px" onclick="stripMarkers()">Strip ${_mc}</button>`;
       if(!s.editing)h+=`<button class="btn" style="background:#334155" onclick="state.editText=state.noteText;state.editing=true;render()">✏️</button>`;
       else h+=`<button class="btn" style="background:#059669" onclick="state.noteText=state.editText;state.editing=false;render()">💾</button><button class="btn" style="background:#7f1d1d" onclick="state.editing=false;render()">✕</button>`;
       h+=`</div></div>`;
@@ -1438,6 +1519,7 @@ function render(){
     // Actions
     if(s.noteText&&s.billRaw){
       h+=`<button class="big" style="background:linear-gradient(135deg,#b45309,#d97706);margin-top:8px" onclick="verifyBilling()" ${isL?"disabled":""}>🔍 Verify Billing</button>`;
+      h+=`<button class="big" style="background:linear-gradient(135deg,#4338ca,#6366f1);margin-top:8px" onclick="rerunBilling()" ${isL?"disabled":""}>🔄 Re-run Billing</button>`;
       h+=`<button id="coderBtn" class="big" style="background:#334155;margin-top:8px" onclick="sendToCoder(state.noteText,state.billRaw)">📧 Copy → Coder</button>`;
     }
     if(s._reopenedCase){
@@ -1497,7 +1579,7 @@ function render(){
     const daDis=!(s.detailAddendText||"").trim()||isL;
     h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:${daDis?"#1e293b":"#6366f1"};flex:2;padding:10px;font-size:12px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'note')" ${daDis?"disabled":""}>✅ Add</button></div>`;
     h+=`<div style="display:flex;gap:6px;margin-top:4px"><button class="btn" style="background:${daDis?"#1e293b":"#7c3aed"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'hpi')" ${daDis?"disabled":""}>📝 HPI</button><button class="btn" style="background:${daDis?"#1e293b":"#2563eb"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'ap')" ${daDis?"disabled":""}>📋 A/P</button><button class="btn" style="background:${daDis?"#1e293b":"#059669"};flex:1;padding:8px;font-size:11px;opacity:${daDis?0.4:1}" onclick="detailAddend('${c.id}',${ni},state.detailAddendText,'exam')" ${daDis?"disabled":""}>🩺 Exam</button></div></div></div>`;
-    if(isL)h+=`<div class="ld">${ph[s.phase]||"Processing..."}</div>`;
+    if(isL){h+=`<div class="ld">${ph[s.phase]||"Processing..."}`;if(_phaseWarn)h+=`<div style="margin-top:6px;font-size:11px;color:#f59e0b">Taking longer than expected... <button style="background:#7f1d1d;color:#fca5a5;border:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="state.phase='';state._phaseStart=null;render()">Cancel</button></div>`;h+=`</div>`;}
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
     // Actions
     h+=`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="background:linear-gradient(135deg,#b45309,#d97706);flex:1" onclick="reopenCase('${c.id}',${ni})">🔓 Full Edit</button><button class="btn" style="background:#1e3a5f;flex:1" onclick="setState({view:'input',text:'',linkedTo:'${c.id}',nt:'progress'})">+ Linked</button><button class="btn" style="background:#7f1d1d" onclick="if(confirm('Delete?'))deleteCase('${c.id}')">🗑️</button></div>`;
