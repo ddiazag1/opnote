@@ -493,7 +493,7 @@ function stripMarkers(){
     .replace(/\*{0,3}\s*NOT EXAMINED\s*[—–-]\s*DOCUMENT\s*\*{0,3}\s*/gi,"");
   render();
 }
-function stripBilling(t){return(t||"").replace(/\n*BILLING ANALYSIS:[\s\S]*$/i,"").replace(/\n*PRIMARY PROCEDURES:[\s\S]*$/i,"").trim();}
+function stripBilling(t){return(t||"").replace(/\n*PRE-?AUTHORIZATION[:\s][\s\S]*$/i,"").replace(/\n*GAPS IN DOCUMENTATION[:\s][\s\S]*$/i,"").replace(/\n*BILLING ANALYSIS:[\s\S]*$/i,"").replace(/\n*PRIMARY PROCEDURES:[\s\S]*$/i,"").trim();}
 function dedupNote(t){if(!t)return t;const headers=["PREOPERATIVE DIAGNOSIS","POSTOPERATIVE DIAGNOSIS","PROCEDURE","INDICATIONS","TECHNIQUE","ASSESSMENT AND PLAN","HISTORY OF PRESENT ILLNESS","PHYSICAL EXAMINATION","DISPOSITION"];let out=t;headers.forEach(h=>{const rx=new RegExp("(^|\\n)("+h+"[:\\s])","gi");const matches=[...out.matchAll(rx)];if(matches.length>1){out=out.slice(0,matches[0].index)+out.slice(matches[1].index);}});return out.trim();}
 const INC_SUFFIX="\n\nCRITICAL: Output ONLY the single updated note. REPLACE changed sections in-place. Do NOT append or duplicate. One note only.";
 function fmtTime(ms){if(!ms)return"";const s=Math.round(ms/1000);return s<60?s+"s":Math.floor(s/60)+"m "+s%60+"s";}
