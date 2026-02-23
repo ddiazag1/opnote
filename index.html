@@ -522,7 +522,7 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cranial Nerves|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
+function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial Nerves|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/(?:ASSUMED[.*]*)\s+(General|Spine|Neurological|Motor|Sensory|Reflexes|Hoffmann|Spurling|Babinski|Clonus|Gait|SLR|Straight Leg Raise|Rectal|Perianal|HEENT|Cardiovascular|Pulmonary|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|Cranial Nerves|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral|DTRs|Cerebellar|Station|Mental Status|GCS)(\s*:)/g,"ASSUMED\n$1$2");s=s.replace(/\.\s+(?=[A-Z][A-Z /&\-]{2,}:)/g,".\n\n");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n(?=(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial Nerves|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)[\s:.])/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
 function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<br><b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});html=html.replace(/^<br>/,"");plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
@@ -616,16 +616,33 @@ CLINIC NOTE RULES:
 - ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
+  CRITICAL FORMATTING: Each exam subsection MUST be on its OWN LINE. Never combine multiple subsections on a single line. Example:
   PHYSICAL EXAMINATION:
-    General: Alert, oriented, no acute distress. ***ASSUMED***
-    Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
-  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals:
-    - Lumbar complaint → Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius) ***ASSUMED***, Sensory: Intact to light touch L2-S1 dermatomes bilaterally ***ASSUMED***, Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally ***ASSUMED***, SLR: Negative bilaterally ***ASSUMED***
-    - Cervical complaint → Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics) ***ASSUMED***, Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***, Hoffmann: Negative bilaterally ***ASSUMED***, Spurling: Negative bilaterally ***ASSUMED***
-    - Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Use: Rectal tone: ***NOT EXAMINED — DOCUMENT***, Perianal sensation: ***NOT EXAMINED — DOCUMENT***, Post-void residual: ***NOT EXAMINED — DOCUMENT***
-    - Myelopathy concern → DO NOT assume normal. Use: Gait: ***NOT EXAMINED — DOCUMENT***, Hoffmann: ***NOT EXAMINED — DOCUMENT***, Babinski: ***NOT EXAMINED — DOCUMENT***, Clonus: ***NOT EXAMINED — DOCUMENT***
+  General: Alert, oriented, no acute distress. ***ASSUMED***
+  Spine: No visible deformity. Mild tenderness to palpation at [relevant level from imaging]. Range of motion limited by pain. ***ASSUMED***
+  Then add NEUROLOGICAL exam elements SPECIFIC to the complaint with assumed normals. EACH ITEM ON ITS OWN LINE:
+    - Lumbar complaint →
+      Motor: 5/5 bilateral lower extremities (hip flexors, quadriceps, tibialis anterior, EHL, gastrocnemius) ***ASSUMED***
+      Sensory: Intact to light touch L2-S1 dermatomes bilaterally ***ASSUMED***
+      Reflexes: Patellar 2+ bilaterally, Achilles 2+ bilaterally ***ASSUMED***
+      SLR: Negative bilaterally ***ASSUMED***
+    - Cervical complaint →
+      Motor: 5/5 bilateral upper extremities (deltoids, biceps, triceps, wrist extensors, grip, intrinsics) ***ASSUMED***
+      Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***
+      Hoffmann: Negative bilaterally ***ASSUMED***
+      Spurling: Negative bilaterally ***ASSUMED***
+    - Bowel/bladder symptoms or cauda equina concern → DO NOT assume normal. Use (each on own line):
+      Rectal tone: ***NOT EXAMINED — DOCUMENT***
+      Perianal sensation: ***NOT EXAMINED — DOCUMENT***
+      Post-void residual: ***NOT EXAMINED — DOCUMENT***
+    - Myelopathy concern → DO NOT assume normal. Use (each on own line):
+      Gait: ***NOT EXAMINED — DOCUMENT***
+      Hoffmann: ***NOT EXAMINED — DOCUMENT***
+      Babinski: ***NOT EXAMINED — DOCUMENT***
+      Clonus: ***NOT EXAMINED — DOCUMENT***
     - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
   CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
+  CRITICAL: NEVER put Motor, Sensory, Reflexes, Hoffmann, Spurling, SLR, Gait, Babinski, or Clonus on the same line. Each gets its OWN line.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - REVIEW OF SYSTEMS: Include in all clinic notes. If not dictated, use: "ROS: Positive for [relevant symptoms from HPI]. Negative for weakness, numbness, tingling, gait difficulty, balance problems, headache, dizziness, bowel/bladder dysfunction, fever, chills, night sweats, unexplained weight loss, bilateral symptoms, chest pain, shortness of breath."
 - PLAN STRUCTURE FOR SURGICAL CANDIDATES:
