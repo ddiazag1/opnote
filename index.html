@@ -467,12 +467,11 @@ function pickImage(target){const inp=document.createElement("input");inp.type="f
 // ---- HELPERS ----
 function stripAll(t){return(t||"")
 .replace(/```[\s\S]*?```/g,"")
-.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g,"$1")
-.replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"")
-.replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"")
-.replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"")
-.replace(/\*{2,3}\s*ASSUMED FROM HPI\s*\*{2,3}\s*/gi,"")
-.replace(/\*{2,3}\s*NOT EXAMINED — DOCUMENT\s*\*{2,3}\s*/gi,"[DOCUMENT]")
+.replace(/\*{0,3}\s*ASSUMED FROM HPI\s*\*{0,3}\s*/gi,"")
+.replace(/\*{0,3}\s*ASSUMED\s*\*{0,3}\s*/gi,"")
+.replace(/\*{0,3}\s*IMPLANT\s*\*{0,3}\s*/gi,"")
+.replace(/\*{0,3}\s*ADDED\s*\*{0,3}\s*/gi,"")
+.replace(/\*{0,3}\s*NOT EXAMINED\s*[—–-]\s*DOCUMENT\s*\*{0,3}\s*/gi,"")
 .replace(/\*\*([^*]+)\*\*/g,"$1")
 .replace(/`([^`]+)`/g,"$1")
 .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1")
@@ -484,14 +483,14 @@ function stripAll(t){return(t||"")
 .replace(/---+/g,"")
 .replace(/\n{3,}/g,"\n\n")
 .replace(/  +/g," ");}
-function countMarkers(t){if(!t)return 0;return((t.match(/\*{2,3}\s*(ASSUMED|IMPLANT|ADDED|ASSUMED FROM HPI|NOT EXAMINED — DOCUMENT)\s*\*{2,3}/gi))||[]).length;}
+function countMarkers(t){if(!t)return 0;return((t.match(/\*{0,3}\s*(ASSUMED FROM HPI|ASSUMED|IMPLANT|ADDED|NOT EXAMINED\s*[—–-]\s*DOCUMENT)\s*\*{0,3}/gi))||[]).length;}
 function stripMarkers(){
   state.noteText=state.noteText
-    .replace(/\*{2,3}\s*ASSUMED\s*\*{2,3}\s*/gi,"")
-    .replace(/\*{2,3}\s*IMPLANT\s*\*{2,3}\s*/gi,"")
-    .replace(/\*{2,3}\s*ADDED\s*\*{2,3}\s*/gi,"")
-    .replace(/\*{2,3}\s*ASSUMED FROM HPI\s*\*{2,3}\s*/gi,"")
-    .replace(/\*{2,3}\s*NOT EXAMINED — DOCUMENT\s*\*{2,3}\s*/gi,"[DOCUMENT]");
+    .replace(/\*{0,3}\s*ASSUMED FROM HPI\s*\*{0,3}\s*/gi,"")
+    .replace(/\*{0,3}\s*ASSUMED\s*\*{0,3}\s*/gi,"")
+    .replace(/\*{0,3}\s*IMPLANT\s*\*{0,3}\s*/gi,"")
+    .replace(/\*{0,3}\s*ADDED\s*\*{0,3}\s*/gi,"")
+    .replace(/\*{0,3}\s*NOT EXAMINED\s*[—–-]\s*DOCUMENT\s*\*{0,3}\s*/gi,"");
   render();
 }
 function stripBilling(t){return(t||"").replace(/\n*BILLING ANALYSIS:[\s\S]*$/i,"").replace(/\n*PRIMARY PROCEDURES:[\s\S]*$/i,"").trim();}
