@@ -1405,10 +1405,10 @@ function render(){
       h+=`</div>`;
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
-    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value">${esc(s.text)}</textarea>`;
+    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="Dictate, type, or paste..." oninput="state.text=this.value;var pb=document.getElementById('processBtn');if(pb){var has=!!this.value.trim();pb.disabled=!has;pb.style.opacity=has?1:0.4;pb.style.background=has?'linear-gradient(135deg,#1d4ed8,#2563eb)':'#1e293b';}">${esc(s.text)}</textarea>`;
     if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';render()">Clear</button></div>`;}
     if(s.linkedTo){const lc=s.cases.find(c=>c.id===s.linkedTo);if(lc)h+=`<div style="background:#1e3a5f30;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#60a5fa">🔗 Linked to: ${esc(lc.proc)} <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({linkedTo:null})">✕</button></div>`;}
-    h+=`<button class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
+    h+=`<button id="processBtn" class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
   }
 
