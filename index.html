@@ -631,18 +631,19 @@ CLINIC NOTE RULES:
       Reflexes: Biceps 2+, triceps 2+, brachioradialis 2+ bilaterally ***ASSUMED***
       Hoffmann: Negative bilaterally ***ASSUMED***
       Spurling: Negative bilaterally ***ASSUMED***
-    - Bowel/bladder symptoms or cauda equina concern (ONLY if patient explicitly reports bowel/bladder dysfunction, saddle anesthesia, or urinary retention) → DO NOT assume normal for these specific items:
-      Rectal tone: ***NOT EXAMINED — DOCUMENT***
-      Perianal sensation: ***NOT EXAMINED — DOCUMENT***
-      Post-void residual: ***NOT EXAMINED — DOCUMENT***
-    - Myelopathy concern (ONLY if patient explicitly reports gait difficulty, balance problems, falling, dropping objects, or difficulty with fine motor tasks) → DO NOT assume normal for these specific myelopathy signs:
-      Gait: ***NOT EXAMINED — DOCUMENT***
-      Hoffmann: ***NOT EXAMINED — DOCUMENT***
-      Babinski: ***NOT EXAMINED — DOCUMENT***
-      Clonus: ***NOT EXAMINED — DOCUMENT***
-    - IMPORTANT: A standard cervical complaint (neck pain, radiculopathy, arm pain/numbness) WITHOUT explicit myelopathy symptoms should use the CERVICAL ASSUMED NORMALS above — NOT the "NOT EXAMINED" markers. Only use "NOT EXAMINED" when the patient specifically describes myelopathy symptoms.
+    - Bowel/bladder symptoms or cauda equina concern (patient explicitly reports bowel/bladder dysfunction, saddle anesthesia, or urinary retention) → Still use assumed normals in the NOTE TEXT:
+      Rectal tone: Normal ***ASSUMED***
+      Perianal sensation: Intact ***ASSUMED***
+      Post-void residual: Not measured ***ASSUMED***
+      Then flag in GAPS section as RED FLAG: "Cauda equina symptoms reported — rectal tone, perianal sensation, and PVR were auto-filled as assumed normals. Verify these were actually examined."
+    - Myelopathy concern (patient explicitly reports gait difficulty, balance problems, falling, dropping objects, or difficulty with fine motor tasks) → Still use assumed normals in the NOTE TEXT:
+      Gait: Normal, steady ***ASSUMED***
+      Hoffmann: Negative bilaterally ***ASSUMED***
+      Babinski: Downgoing bilaterally ***ASSUMED***
+      Clonus: Negative bilaterally ***ASSUMED***
+      Then flag in GAPS section as RED FLAG: "Myelopathy symptoms reported — gait, Hoffmann, Babinski, and clonus were auto-filled as assumed normals. Verify these were actually examined."
     - If findings in HPI suggest abnormality (e.g. patient reports left leg weakness), adjust the assumed exam to MATCH: e.g. "Left tibialis anterior 4/5 ***ASSUMED FROM HPI***, right 5/5"
-  CRITICAL: The "NOT EXAMINED — DOCUMENT" markers are ONLY for explicit cauda equina or myelopathy symptoms reported by the patient. For routine spine complaints, ALWAYS use assumed normals marked ***ASSUMED***.
+  CRITICAL: NEVER put instructions, warnings, or "NOT EXAMINED" markers in the note text. The note text must ALWAYS be clean, complete, and ready to paste into the EMR. All warnings and flags go in the GAPS section only.
   CRITICAL: NEVER put Motor, Sensory, Reflexes, Hoffmann, Spurling, SLR, Gait, Babinski, or Clonus on the same line. Each gets its OWN line.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - REVIEW OF SYSTEMS: Include in all clinic notes. If not dictated, use: "ROS: Positive for [relevant symptoms from HPI]. Negative for weakness, numbness, tingling, gait difficulty, balance problems, headache, dizziness, bowel/bladder dysfunction, fever, chills, night sweats, unexplained weight loss, bilateral symptoms, chest pain, shortness of breath."
@@ -758,10 +759,9 @@ GAPS:
 CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY for clinic/consult notes):
 - If note has NO PHYSICAL EXAMINATION section → ALWAYS flag as HIGH gap
 - If note has PE but NO neurological exam (motor, sensory, reflexes) → flag as HIGH gap for spine patients
-- If note has bowel/bladder complaints + ***NOT EXAMINED — DOCUMENT*** for rectal tone/perianal → flag as RED FLAG for cauda equina screening with urgent incorporate language
+- If note has bowel/bladder complaints or myelopathy symptoms with ***ASSUMED*** markers on cauda equina/myelopathy exam items → flag as RED FLAG: "Critical exam findings were auto-filled — verify rectal tone/perianal/gait/Hoffmann/Babinski/clonus were actually examined"
 - If ***ASSUMED*** markers present → flag as MED gap: "Physical exam auto-filled — verify findings match your examination"
 - If ***ASSUMED FROM HPI*** markers present → flag as MED gap: "Exam finding inferred from history — confirm on examination"
-- If ***NOT EXAMINED — DOCUMENT*** markers present → flag as HIGH gap with specific incorporate language for each
 - These PE gaps take PRIORITY over billing optimization gaps
 IMPACT: HIGH/MED/LOW
 ISSUE: [missing] — [CPT] ([+X.X RVU])
