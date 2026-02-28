@@ -228,6 +228,70 @@ function escJs(s){return String(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")
 // ---- RVU TABLE (2025 Medicare PFS) ----
 const RVU_TABLE={22551:20.50,22552:6.51,22845:5.21,22600:22.35,22610:22.35,22612:25.08,22614:6.00,22633:25.52,22634:6.44,22853:5.54,22854:3.92,22840:8.48,22842:11.88,22843:14.72,22844:16.20,63047:13.15,63048:3.22,63030:10.45,63035:3.22,63042:12.00,63052:14.50,63053:3.50,63056:13.50,22513:10.45,22514:10.45,63081:23.50,63082:5.50,22554:18.50,61781:5.31,61782:5.31,61783:5.31,20930:2.97,20931:3.80,20936:3.37,20937:5.50,20938:6.20,22206:30.00,22207:30.00,22210:15.00,22212:15.00,22214:15.00,22852:12.50,22855:13.00,20251:2.40,63050:15.50,63051:3.80,69990:3.00,22595:24.00,22548:18.50,99202:1.22,99203:1.82,99204:2.60,99205:3.50,99211:0.57,99212:0.93,99213:1.30,99214:1.92,99215:2.80,99252:1.55,99253:2.11,99254:3.18,99255:3.86,99291:10.00,99292:5.00};
 
+// ---- NCCI PTP EDITS (2026 Q2, CMS v321r0) ----
+// Format: {col1: [[col2, modifier_indicator, reason],...]}
+// modifier: 0=never allowed, 1=modifier may override
+// reason: MX=mutually exclusive, DEF=code definition, CMS=CMS instruction, STD=standards, ME=more extensive, MIS=misuse
+const NCCI_PTP={
+  20251:[[69990,0,"MIS"]],
+  22206:[[22207,0,"CMS"],[22212,1,"CMS"],[22214,1,"CMS"],[22551,1,"CMS"],[63030,1,"CMS"],[63035,1,"CMS"],[63042,1,"CMS"],[63048,1,"CMS"],[63052,1,"CMS"],[63056,1,"CMS"],[63081,1,"CMS"],[63082,1,"CMS"],[69990,0,"MIS"]],
+  22207:[[22210,1,"CMS"],[22212,1,"CMS"],[22214,1,"CMS"],[22551,1,"CMS"],[63030,1,"CMS"],[63035,1,"CMS"],[63042,1,"CMS"],[63047,1,"CMS"],[63048,1,"CMS"],[63052,1,"CMS"],[63056,1,"CMS"],[63081,1,"CMS"],[63082,1,"CMS"],[69990,0,"MIS"]],
+  22210:[[22212,1,"MIS"],[69990,0,"MIS"]],
+  22214:[[22212,1,"MIS"],[63030,1,"STD"],[63047,1,"STD"],[63052,1,"STD"],[69990,0,"MIS"]],
+  22513:[[22514,0,"CMS"],[22853,1,"MX"],[22854,1,"MX"],[69990,0,"MIS"]],
+  22514:[[22853,1,"MX"],[22854,1,"MX"],[69990,0,"MIS"]],
+  22548:[[69990,0,"MIS"]],
+  22551:[[22554,1,"CMS"],[69990,0,"MIS"]],
+  22552:[[69990,0,"CMS"]],
+  22554:[[22552,1,"CMS"],[69990,0,"MIS"]],
+  22595:[[69990,0,"MIS"]],
+  22600:[[22610,1,"MIS"],[69990,0,"MIS"]],
+  22610:[[63050,1,"STD"],[63051,1,"STD"],[69990,0,"MIS"]],
+  22612:[[22610,1,"MIS"],[63050,1,"STD"],[63051,1,"STD"],[69990,0,"MIS"]],
+  22633:[[22610,1,"MIS"],[22612,0,"DEF"],[63030,1,"STD"],[63035,1,"CMS"],[63042,1,"CMS"],[63047,1,"MIS"],[63048,1,"CMS"],[63050,1,"STD"],[63051,1,"STD"],[63056,1,"STD"],[69990,0,"MIS"]],
+  22634:[[22610,1,"MIS"],[63030,1,"CMS"],[63035,1,"CMS"],[63042,1,"CMS"],[63047,1,"CMS"],[63048,1,"CMS"],[63050,1,"STD"],[63051,1,"STD"],[63056,1,"STD"],[69990,0,"MIS"]],
+  22840:[[22852,1,"CMS"]],
+  22842:[[22840,1,"MX"],[22852,1,"CMS"]],
+  22843:[[22840,1,"MX"],[22842,1,"MX"],[22852,1,"CMS"]],
+  22844:[[22840,1,"MX"],[22842,1,"MX"],[22843,1,"MX"],[22852,1,"CMS"],[22855,1,"CMS"]],
+  22845:[[22852,1,"CMS"]],
+  22853:[[22845,1,"DEF"],[69990,0,"MIS"]],
+  22854:[[22845,1,"DEF"],[69990,0,"MIS"]],
+  22855:[[22840,1,"CMS"],[22842,1,"CMS"],[22843,1,"CMS"],[22845,1,"CMS"]],
+  61781:[[61782,0,"CMS"],[61783,1,"CMS"],[69990,1,"MIS"]],
+  61782:[[69990,1,"MIS"]],
+  61783:[[69990,1,"MIS"]],
+  63030:[[20251,1,"STD"],[61783,1,"MIS"],[63042,1,"MX"],[63056,1,"MX"],[69990,0,"MIS"]],
+  63042:[[20251,1,"STD"],[61783,1,"MIS"],[63056,1,"MX"],[69990,0,"MIS"]],
+  63047:[[22852,1,"STD"],[61783,1,"MIS"],[63030,1,"DEF"],[63042,1,"DEF"],[63052,1,"DEF"],[63056,1,"MX"],[69990,0,"MIS"]],
+  63050:[[22600,1,"CMS"],[22614,1,"CMS"],[61783,1,"MIS"],[63048,1,"CMS"],[69990,0,"MIS"]],
+  63051:[[22600,1,"CMS"],[22614,1,"CMS"],[61783,1,"MIS"],[63048,1,"CMS"],[63050,1,"ME"],[69990,0,"MIS"]],
+  63052:[[20251,1,"STD"],[61783,1,"MIS"],[63030,1,"MX"],[63042,1,"MX"],[63056,1,"MX"],[69990,0,"MIS"]],
+  63053:[[20251,1,"STD"],[61783,1,"MIS"],[63042,1,"MX"],[63056,1,"MX"],[69990,0,"MIS"]],
+  63056:[[22214,1,"ME"],[69990,0,"MIS"]],
+  63081:[[22551,1,"ME"]]
+};
+
+function validateNCCI(cptSet){
+  const ncciWarnings=[],ncciFixes=[];
+  const cptArr=[...cptSet];
+  for(let i=0;i<cptArr.length;i++){
+    const edits=NCCI_PTP[cptArr[i]];
+    if(!edits)continue;
+    for(const [col2,mod,reason] of edits){
+      if(cptSet.has(col2)){
+        const reasonText={MX:"Mutually exclusive",DEF:"Code includes the other",CMS:"CMS coding instruction",STD:"Standards of practice",ME:"More extensive procedure",MIS:"Code misuse"}[reason]||reason;
+        if(mod===0){
+          ncciFixes.push({msg:"NCCI DENY: "+cptArr[i]+" + "+col2+" \u2014 "+reasonText+". No modifier override allowed."});
+        }else{
+          ncciWarnings.push({msg:"NCCI EDIT: "+cptArr[i]+" + "+col2+" \u2014 "+reasonText+". Modifier 59/XE/XS/XP/XU required if separate."});
+        }
+      }
+    }
+  }
+  return{ncciWarnings,ncciFixes};
+}
+
 // ---- BILLING VALIDATOR ----
 function validateBilling(codes,noteText){
   const warnings=[],fixes=[];if(!codes)return{warnings,fixes,correctedRVU:null};
@@ -235,25 +299,22 @@ function validateBilling(codes,noteText){
   const cptSet=new Set(cptMatches);
   const noteUpper=(noteText||"").toUpperCase();
   const isSpine=noteUpper.includes("LUMBAR")||noteUpper.includes("CERVICAL")||noteUpper.includes("THORACIC")||noteUpper.includes("FUSION")||noteUpper.includes("TLIF")||noteUpper.includes("ACDF")||noteUpper.includes("LAMINECTOMY");
-  // Mutual exclusivity
-  if(cptSet.has(22633)&&(cptSet.has(22612)||cptSet.has(22853)))fixes.push({msg:"MUTUAL EXCLUSIVITY: 22633 (combined) and 22612+22853 (separate) cannot both appear."});
-  // Navigation
+  // Navigation (clinical context — NCCI doesn't know spine vs cranial)
   if(cptSet.has(61782)&&isSpine)fixes.push({msg:"NAVIGATION: 61782 is cranial only. Use 61783 for spine."});
   // Duplicates
   const nonAddOn=new Set([22551,22612,22600,22610,22633,63047,63030,22513,22514,22840,22842,22843,22844,61783,20930,20931,20936,69990]);
   const counts={};cptMatches.forEach(c=>{counts[c]=(counts[c]||0)+1;});
   Object.entries(counts).forEach(([c,n])=>{if(n>1&&nonAddOn.has(parseInt(c)))fixes.push({msg:"DUPLICATE: "+c+" appears "+n+"x but is not a per-level add-on."});});
-  // Graft sanity
+  // Graft sanity (requires note text analysis)
   if(cptSet.has(20931)){const noteLow=(noteText||"").toLowerCase();if(noteLow.includes("morselized")||noteLow.includes("chips")||noteLow.includes("dbm"))fixes.push({msg:"GRAFT: 20931 (structural) but note says morselized/chips/DBM. Should be 20930."});}
-  // Microscope
+  // Microscope documentation (NCCI handles bundling, we check documentation)
   if(cptSet.has(69990)&&!(noteText||"").match(/microscop/i))warnings.push({msg:"69990 (microscope) billed but microscope use not documented."});
-  // PSO + decompression
+  // PSO + decompression code swap (clinical logic)
   if((cptSet.has(22206)||cptSet.has(22207))&&(cptSet.has(63047)||cptSet.has(63048)))warnings.push({msg:"PSO performed — decompression should be 63052/63053, NOT 63047/63048."});
-  // Multiple instrumentation
-  const instrCodes=[22840,22842,22843,22844].filter(c=>cptSet.has(c));
-  if(instrCodes.length>1)fixes.push({msg:"MULTIPLE INSTRUMENTATION: "+instrCodes.join(", ")+" — only one tier allowed."});
-  // Bundling
-  if(cptSet.has(63047)&&cptSet.has(63030))warnings.push({msg:"63047+63030 bundling — verify separate levels."});
+  // NCCI PTP edits
+  const ncci=validateNCCI(cptSet);
+  warnings.push(...ncci.ncciWarnings);
+  fixes.push(...ncci.ncciFixes);
   // RVU correction
   let correctedRVU=0;
   cptMatches.forEach(c=>{const rvu=RVU_TABLE[c];if(rvu){const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;correctedRVU+=rvu*mult;}});
@@ -1440,9 +1501,10 @@ function render(){
     h+=`</div>`;
     h+=`<div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px">CLINICAL DATA <span style="color:#475569;font-weight:400">(de-identified only)</span></div>`;
     const zones=[{id:"mriText",label:"📋 MRI / Imaging Report",ph:"Paste RADIOLOGY REPORT only (findings + impression). NOT exam, ROS, or clinical notes."},{id:"medsText",label:"💊 Medications",ph:"Failed meds with durations (e.g. gabapentin 6 weeks, meloxicam 3 months)..."},{id:"ptText",label:"🏋️ PT / Conservative Tx",ph:"PT visits, injection dates, durations, outcomes..."},{id:"labsText",label:"🧪 Labs",ph:"Cotinine level, DEXA T-score, HbA1c..."},{id:"priorText",label:"🔪 Prior Procedures",ph:"Prior spine surgery, injection history, dates..."}];
-    zones.forEach(z=>{h+=`<div class="auth-zone"><div class="az-label">${z.label}</div><textarea class="az-ta" placeholder="${esc(z.ph)}" oninput="authState.${z.id}=this.value">${esc(a[z.id])}</textarea></div>`;});
+    zones.forEach(z=>{h+=`<div class="auth-zone"><div class="az-label">${z.label}</div><textarea class="az-ta" placeholder="${esc(z.ph)}" oninput="authState.${z.id}=this.value">${esc(a[z.id])}</textarea>`;if(z.id==="mriText"&&a.mriText){const rej=["mass effect","impingement","abutment","effacement","indentation","flattening","displacement"];const mriLow=a.mriText.toLowerCase();const found=rej.filter(t=>mriLow.includes(t));if(found.length)h+=`<div style="margin-top:4px;padding:8px 10px;background:rgba(234,179,8,0.15);border:1px solid #92400e;border-radius:6px;font-size:11px;color:#fef08a;line-height:1.5"><strong>Aetna language risk:</strong> "${found.join('", "')}" found. Aetna requires "compression" \u2014 these terms trigger denial. Request radiologist addendum if needed.</div>`;}h+=`</div>`;});
     const canRun=a.payer&&a.procedure&&(a.mriText||a.medsText||a.ptText||a.labsText||a.priorText);
     h+=`<button class="big" style="background:${canRun?"linear-gradient(135deg,#059669,#10b981)":"#1e293b"};margin-top:6px;opacity:${canRun?1:0.4}" onclick="runAuthCheck()" ${!canRun||a.phase==="checking"?"disabled":""}>🛡️ Run Authorization Check</button>`;
+    if(a.payer==="uhc")h+=`<div style="margin-top:8px;padding:10px 12px;background:rgba(234,179,8,0.12);border:1px solid #92400e;border-radius:8px;font-size:11px;color:#fef08a;line-height:1.5"><strong>UHC / InterQual Notice:</strong> UHC defers all medical necessity to InterQual (proprietary, not publicly available). Criteria below are approximate. Peer-to-peer review is likely.</div>`;
     if(a.phase==="checking")h+=`<div class="ld">Running payer-specific analysis...</div>`;
     if(a.err)h+=`<div class="err"><div>${esc(a.err)}</div></div>`;
     // Auth Results
@@ -1517,7 +1579,7 @@ function render(){
       h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Code Detail</span></div><div class="card-b" id="codesBox"></div></div>`;
     }
     // Billing Validator
-    if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
+    if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span><span style="font-size:9px;font-weight:700;color:#64748b;background:#1e293b;padding:2px 6px;border-radius:4px">NCCI v321r0 2026Q2</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
     if(s.billMod)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📎 Modifiers</span></div><div class="card-b" id="modBox"></div></div>`;
     if(s.billICD)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">🏥 ICD-10</span></div><div class="card-b" id="icdBox"></div></div>`;
     if(s.billBundle)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📦 Bundling</span></div><div class="card-b" id="bundleBox"></div></div>`;
