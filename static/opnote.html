@@ -201,6 +201,56 @@ const NCCI_PTP={
   63081:[[22551,1,"ME"]]
 };
 
+// ---- NCCI MUE TABLE (2026 Q2, CMS) ----
+// Format: {cpt: [max_units, rationale, mue_type]}
+// mue_type: 1=claim line, 2=claim day, 3=date of service
+// rationale: A=anatomic, C=clinical, E=equipment, P=policy, N=nature of code
+const MUE_TABLE={
+  // Spine fusions
+  22206:[1,"P",3],22207:[1,"P",3],22210:[1,"P",3],22212:[1,"P",3],22214:[1,"P",3],
+  22513:[2,"A",3],22514:[2,"A",3],22515:[2,"A",3],
+  22548:[1,"P",3],22551:[1,"P",3],22552:[2,"A",3],22554:[1,"P",3],22595:[1,"P",3],
+  22600:[1,"P",3],22610:[1,"P",3],22612:[1,"P",3],22614:[4,"A",3],
+  22633:[1,"P",3],22634:[4,"A",3],
+  // Instrumentation
+  22840:[1,"P",3],22842:[1,"P",3],22843:[1,"P",3],22844:[1,"P",3],22845:[1,"P",3],
+  22852:[1,"P",3],22853:[1,"A",3],22854:[4,"A",3],22855:[1,"P",3],
+  // Decompressions
+  63005:[1,"P",3],63012:[1,"P",3],63017:[1,"P",3],
+  63030:[2,"A",3],63035:[4,"A",3],63042:[2,"A",3],63044:[4,"A",3],
+  63047:[1,"P",3],63048:[4,"A",3],63050:[1,"P",3],63051:[2,"A",3],
+  63052:[1,"P",3],63053:[4,"A",3],63056:[1,"P",3],
+  63075:[1,"P",3],63076:[2,"A",3],
+  63081:[1,"P",3],63082:[2,"A",3],
+  // Grafts
+  20251:[1,"P",3],20930:[1,"C",3],20931:[1,"C",3],20936:[1,"C",3],20937:[1,"C",3],20938:[1,"C",3],
+  // Navigation & microscope
+  61781:[1,"P",3],61782:[1,"P",3],61783:[1,"P",3],69990:[1,"P",3],
+  // E/M (per day)
+  99202:[1,"C",2],99203:[1,"C",2],99204:[1,"C",2],99205:[1,"C",2],
+  99211:[1,"C",2],99212:[1,"C",2],99213:[1,"C",2],99214:[1,"C",2],99215:[1,"C",2],
+  99252:[1,"C",2],99253:[1,"C",2],99254:[1,"C",2],99255:[1,"C",2],
+  99291:[1,"C",2],99292:[4,"C",2],
+  // Vertebroplasty/kyphoplasty
+  22510:[1,"P",3],22511:[1,"P",3],22512:[2,"A",3]
+};
+
+function validateMUE(cptCounts){
+  const mueWarnings=[],mueFixes=[];
+  for(const [cpt,count] of Object.entries(cptCounts)){
+    const code=parseInt(cpt);
+    const rule=MUE_TABLE[code];
+    if(!rule)continue;
+    const [maxUnits,rationale,mueType]=rule;
+    if(count>maxUnits){
+      const rationaleText={A:"Anatomic consideration",C:"Clinical appropriateness",E:"Equipment limitation",P:"CMS policy",N:"Nature of code"}[rationale]||rationale;
+      const typeText=mueType===1?"per claim line":mueType===2?"per day":"per date of service";
+      mueFixes.push({msg:"MUE DENY: "+code+" billed "+count+"x but max is "+maxUnits+" "+typeText+" ("+rationaleText+"). Will auto-deny."});
+    }
+  }
+  return{mueWarnings,mueFixes};
+}
+
 function validateNCCI(cptSet){
   const ncciWarnings=[],ncciFixes=[];
   const cptArr=[...cptSet];
@@ -244,6 +294,12 @@ function validateBilling(codes,noteText){
   const ncci=validateNCCI(cptSet);
   warnings.push(...ncci.ncciWarnings);
   fixes.push(...ncci.ncciFixes);
+  // MUE validation — count units including x2/x3 multipliers
+  const mueCounts={};
+  cptMatches.forEach(c=>{const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;mueCounts[c]=(mueCounts[c]||0)+mult;});
+  const mue=validateMUE(mueCounts);
+  warnings.push(...mue.mueWarnings);
+  fixes.push(...mue.mueFixes);
   // RVU correction
   let correctedRVU=0;
   cptMatches.forEach(c=>{const rvu=RVU_TABLE[c];if(rvu){const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;correctedRVU+=rvu*mult;}});
@@ -1062,12 +1118,12 @@ function exportDayDocx(){
   if(!prepSchedule.length){scribeToast('No schedule to export');return;}
   if(typeof docx==='undefined'){scribeToast('DOCX library loading - try again');return;}
   try{
-    var date=todayISO();
+    var date=prepDate;
     var sections=[];
     for(var pi=0;pi<prepSchedule.length;pi++){
       var p=prepSchedule[pi];
       var children=[];
-      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.appointment_time||'')+' - '+(p.patient_name||''),bold:true,size:32})]}));
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.appointment_time||'')+' - '+anonName(p.patient_name||''),bold:true,size:32})]}));
       children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.visit_type||''),italics:true,size:24})]}));
       children.push(new docx.Paragraph({children:[]}));
       if(p.briefing){
@@ -1161,9 +1217,38 @@ let activePatient=null;
 let prepPanelOpen=true;
 let prepNotes={};
 let prepImages={};
+let anonMode=ls('opnote-anon',false);
+let prepDate=todayISO();
+let prepSearch='';
+
+function anonName(name){
+  if(!anonMode)return name;
+  let h=0;for(let i=0;i<name.length;i++)h=((h<<5)-h+name.charCodeAt(i))|0;
+  const c='ABCDEFGHJKLMNPQRSTVWXYZ23456789';
+  let r='';const s=Math.abs(h);
+  for(let i=0;i<3;i++)r+=c[(s>>>(i*5))%c.length];
+  r+='-';for(let i=0;i<3;i++)r+=c[(s>>>(15+i*5))%c.length];
+  return r;
+}
+
+function deleteSchedulePatient(id){
+  if(!confirm('Remove this patient from the schedule?'))return;
+  prepSchedule=prepSchedule.filter(p=>p.id!==id);
+  delete prepExpanded[id];delete prepCompleted[id];delete prepNotes[id];
+  syncPrepToServer(prepSchedule);
+  render();
+}
+
+function changeDate(delta){
+  const d=new Date(prepDate+'T12:00:00');
+  d.setDate(d.getDate()+delta);
+  prepDate=d.toISOString().slice(0,10);
+  prepCompleted={};prepExpanded={};prepSearch='';
+  fetchPrepSchedule();
+}
 async function loadPrepImages(){
   try{
-    const date=todayISO();
+    const date=prepDate;
     const all=await getAllDateImages(date);
     prepImages={};
     all.forEach(img=>{if(!prepImages[img.patientId])prepImages[img.patientId]=[];prepImages[img.patientId].push(img);});
@@ -1176,7 +1261,7 @@ function pickPatientImage(patientId,category){
     for(const f of inp.files){
       const reader=new FileReader();
       const b64=await new Promise((res,rej)=>{reader.onload=()=>res(reader.result.split(',')[1]);reader.onerror=rej;reader.readAsDataURL(f);});
-      const img={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),patientId,date:todayISO(),category,base64:b64,mimeType:f.type||'image/jpeg',name:f.name,ocrText:'',ts:Date.now()};
+      const img={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),patientId,date:prepDate,category,base64:b64,mimeType:f.type||'image/jpeg',name:f.name,ocrText:'',ts:Date.now()};
       await savePatientImage(img);
       if(!prepImages[patientId])prepImages[patientId]=[];
       prepImages[patientId].push(img);
@@ -1237,8 +1322,7 @@ const DEMO_SCHEDULE=[
 async function fetchPrepSchedule(){
   prepLoading=true;render();
   try{
-    const today=new Date().toISOString().slice(0,10);
-    const resp=await authFetch('/prep?date='+today);
+    const resp=await authFetch('/prep?date='+prepDate);
     if(resp.ok){const data=await resp.json();if(data.patients&&data.patients.length>0){prepSchedule=data.patients;}}
   }catch(e){}
   try{await loadPrepImages();}catch{}
@@ -1267,8 +1351,7 @@ function startEncounterFromPrep(patient){
 
 function markPrepCompleted(id){
   prepCompleted[id]=true;
-  const today=new Date().toISOString().slice(0,10);
-  authFetch('/prep/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today,updates:{completed:true}})}).catch(()=>{});
+  authFetch('/prep/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:prepDate,updates:{completed:true}})}).catch(()=>{});
   render();
 }
 
@@ -1341,8 +1424,7 @@ function parseScheduleText(text){
 
 async function syncPrepToServer(patients){
   try{
-    const dt=new Date().toISOString().slice(0,10);
-    await authFetch('/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:dt,patients})});
+    await authFetch('/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:prepDate,patients})});
   }catch(e){console.warn('Prep sync failed:',e);}
 }
 
@@ -1852,6 +1934,7 @@ function render(){
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
     h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:12px">`;
+    h+=`<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" ${anonMode?'checked':''} onchange="anonMode=this.checked;lsS('opnote-anon',anonMode);render()"><span style="font-size:12px;color:#94a3b8">Anonymize Patient Names</span></label>`;
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
     h+=`<button class="btn" style="background:#991b1b;width:100%;margin-top:12px" onclick="signOut()">Sign Out</button>`;
     h+=`</div>`;
@@ -1864,13 +1947,17 @@ function render(){
   // ---- INPUT VIEW ----
   if(s.view==="input"){
     // ---- PRE-CLINIC SCHEDULE PANEL ----
-    const orCases=prepSchedule.filter(p=>p.is_surgery);
-    const clinicCases=prepSchedule.filter(p=>!p.is_surgery);
+    const filteredSchedule=prepSearch?prepSchedule.filter(p=>{const q=prepSearch.toLowerCase();return (p.patient_name||'').toLowerCase().includes(q)||(p.visit_type||'').toLowerCase().includes(q)||(p.briefing||'').toLowerCase().includes(q);}):prepSchedule;
+    const orCases=filteredSchedule.filter(p=>p.is_surgery);
+    const clinicCases=filteredSchedule.filter(p=>!p.is_surgery);
     const doneCount=prepSchedule.filter(p=>prepCompleted[p.id]).length;
-    const todayStr=new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"});
-    h+=`<div class="card" style="border-left:4px solid #3b82f6;margin-bottom:12px"><div class="card-h" style="cursor:pointer" onclick="prepPanelOpen=!prepPanelOpen;render()"><span class="title" style="color:#60a5fa">TODAY ${esc(todayStr)}</span><span style="font-size:12px;color:#64748b">${prepSchedule.length?doneCount+'/'+prepSchedule.length+' done':''} ${prepPanelOpen?'\u25B2':'\u25BC'}</span></div>`;
+    const isToday=prepDate===todayISO();
+    const dateObj=new Date(prepDate+'T12:00:00');
+    const dateStr=dateObj.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+    h+=`<div class="card" style="border-left:4px solid #3b82f6;margin-bottom:12px"><div class="card-h" style="cursor:pointer;flex-wrap:wrap" onclick="prepPanelOpen=!prepPanelOpen;render()"><div style="display:flex;align-items:center;gap:6px"><button class="btn" style="background:#334155;padding:4px 8px;font-size:14px;min-width:28px" onclick="event.stopPropagation();changeDate(-1)">&lt;</button><span class="title" style="color:#60a5fa">${isToday?'TODAY':''} ${esc(dateStr)}</span><button class="btn" style="background:#334155;padding:4px 8px;font-size:14px;min-width:28px;${isToday?'opacity:0.3;pointer-events:none':''}" onclick="event.stopPropagation();changeDate(1)">&gt;</button>${!isToday?'<button class="btn" style="background:#2563eb;padding:2px 8px;font-size:10px" onclick="event.stopPropagation();prepDate=todayISO();prepCompleted={};prepExpanded={};prepSearch=\\'\\';fetchPrepSchedule()">Today</button>':''}</div><span style="font-size:12px;color:#64748b">${prepSchedule.length?doneCount+'/'+prepSchedule.length+' done':''} ${prepPanelOpen?'\u25B2':'\u25BC'}</span></div>`;
     if(prepPanelOpen){
       h+=`<div class="card-b" style="padding:8px">`;
+      if(prepSchedule.length>1){h+=`<input class="inp" placeholder="Search patients..." value="${esc(prepSearch)}" oninput="prepSearch=this.value;render()" style="margin-bottom:8px;font-size:12px">`;}
       if(prepLoading){h+=`<div class="ld">Loading schedule...</div>`;}
       else if(!prepSchedule.length){
         h+=`<div style="text-align:center;padding:20px"><div style="font-size:13px;color:#475569;margin-bottom:12px">No schedule loaded</div>`;
@@ -1890,9 +1977,9 @@ function render(){
             h+=`<div style="background:#2a1a1e;border:1px solid ${active?'#dc2626':'#7f1d1d'};border-left:3px solid #dc2626;border-radius:8px;margin-bottom:6px;opacity:${done?0.5:1}">`;
             h+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer" onclick="prepExpanded['${p.id}']=!prepExpanded['${p.id}'];render()">`;
             h+=`<span style="font-size:12px;color:#fca5a5;font-weight:700;min-width:40px">${esc(p.appointment_time)}</span>`;
-            h+=`<span style="font-size:13px;color:#f1f5f9;font-weight:600;flex:1;${done?'text-decoration:line-through':''}">${esc(p.patient_name)}</span>`;
+            h+=`<span style="font-size:13px;color:#f1f5f9;font-weight:600;flex:1;${done?'text-decoration:line-through':''}">${esc(anonName(p.patient_name))}</span>`;
             h+=`<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#991b1b;color:#fca5a5;font-weight:600">${esc(p.visit_type)}</span>`;
-            h+=`${statusIcon}</div>`;
+            h+=`${statusIcon}<button style="background:none;border:none;color:#dc2626;font-size:14px;cursor:pointer;padding:2px 4px;line-height:1" onclick="event.stopPropagation();deleteSchedulePatient('${p.id}')" title="Remove patient">✕</button></div>`;
             if(exp&&!done){
               h+=`<div style="padding:0 10px 10px">`;
               if(p.briefing){
@@ -1924,9 +2011,9 @@ function render(){
             h+=`<div style="background:#0f172a;border:1px solid ${active?'#3b82f6':'#1e293b'};border-left:3px solid #3b82f6;border-radius:8px;margin-bottom:6px;opacity:${done?0.5:1}">`;
             h+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer" onclick="prepExpanded['${p.id}']=!prepExpanded['${p.id}'];render()">`;
             h+=`<span style="font-size:12px;color:#60a5fa;font-weight:700;min-width:40px">${esc(p.appointment_time)}</span>`;
-            h+=`<span style="font-size:13px;color:#f1f5f9;font-weight:600;flex:1;${done?'text-decoration:line-through':''}">${esc(p.patient_name)}</span>`;
+            h+=`<span style="font-size:13px;color:#f1f5f9;font-weight:600;flex:1;${done?'text-decoration:line-through':''}">${esc(anonName(p.patient_name))}</span>`;
             h+=`<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${vtColor}30;color:${vtColor};font-weight:600">${esc(p.visit_type)}</span>`;
-            h+=`${statusIcon}</div>`;
+            h+=`${statusIcon}<button style="background:none;border:none;color:#dc2626;font-size:14px;cursor:pointer;padding:2px 4px;line-height:1" onclick="event.stopPropagation();deleteSchedulePatient('${p.id}')" title="Remove patient">✕</button></div>`;
             if(exp&&!done){
               h+=`<div style="padding:0 10px 10px">`;
               if(p.briefing){
@@ -1967,7 +2054,7 @@ function render(){
       }
       // Active patient indicator
       if(activePatient){
-        h+=`<div style="background:#1e3a5f30;border:2px solid #3b82f6;border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:8px"><span style="font-size:20px">${activePatient.is_surgery?'🔪':'🏥'}</span><div style="flex:1"><div style="font-size:12px;font-weight:800;color:#60a5fa">${esc(activePatient.patient_name)}</div><div style="font-size:11px;color:#94a3b8">${esc(activePatient.visit_type)} @ ${esc(activePatient.appointment_time)}</div></div><button style="font-size:11px;color:#475569;background:none;border:none" onclick="activePatient=null;render()">✕</button></div>`;
+        h+=`<div style="background:#1e3a5f30;border:2px solid #3b82f6;border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:8px"><span style="font-size:20px">${activePatient.is_surgery?'🔪':'🏥'}</span><div style="flex:1"><div style="font-size:12px;font-weight:800;color:#60a5fa">${esc(anonName(activePatient.patient_name))}</div><div style="font-size:11px;color:#94a3b8">${esc(activePatient.visit_type)} @ ${esc(activePatient.appointment_time)}</div></div><button style="font-size:11px;color:#475569;background:none;border:none" onclick="activePatient=null;render()">✕</button></div>`;
       }
       h+=`</div>`;
     }
@@ -2137,7 +2224,7 @@ function render(){
       h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">💰 Code Detail</span></div><div class="card-b" id="codesBox"></div></div>`;
     }
     // Billing Validator
-    if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span><span style="font-size:9px;font-weight:700;color:#64748b;background:#1e293b;padding:2px 6px;border-radius:4px">NCCI v321r0 2026Q2</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
+    if(s.billingValidation){const bv=s.billingValidation;if(bv.fixes.length||bv.warnings.length){h+=`<div class="card" style="border-left:4px solid #f87171"><div class="card-h"><span class="title">🔍 Billing Validator</span><span style="font-size:9px;font-weight:700;color:#64748b;background:#1e293b;padding:2px 6px;border-radius:4px">NCCI+MUE 2026Q2</span></div><div class="card-b">`;bv.fixes.forEach(f=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(220,38,38,0.15);border:1px solid #991b1b;border-radius:8px;font-size:12px;color:#fca5a5"><span class="bv-fix">FIX</span> ${esc(f.msg)}</div>`;});bv.warnings.forEach(w=>{h+=`<div style="padding:8px;margin-bottom:6px;background:rgba(234,179,8,0.1);border:1px solid #92400e;border-radius:8px;font-size:12px;color:#fef08a"><span class="bv-warn">CHECK</span> ${esc(w.msg)}</div>`;});h+=`</div></div>`;}}
     if(s.billMod)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📎 Modifiers</span></div><div class="card-b" id="modBox"></div></div>`;
     if(s.billICD)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">🏥 ICD-10</span></div><div class="card-b" id="icdBox"></div></div>`;
     if(s.billBundle)h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📦 Bundling</span></div><div class="card-b" id="bundleBox"></div></div>`;
@@ -2195,8 +2282,8 @@ function render(){
       const remaining=prepSchedule.filter(p=>!prepCompleted[p.id]&&p.id!==activePatient.id);
       const nextP=remaining.length?remaining[0]:null;
       h+=`<div style="margin-top:12px;padding:12px;background:#1e3a5f20;border:2px solid #3b82f6;border-radius:12px;text-align:center">`;
-      h+=`<div style="font-size:12px;color:#60a5fa;font-weight:700;margin-bottom:8px">${esc(activePatient.patient_name)} — Done</div>`;
-      if(nextP){h+=`<button class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb)" onclick="markPrepCompleted('${activePatient.id}');nextPatient()">Next Patient → ${esc(nextP.patient_name)} @ ${esc(nextP.appointment_time)}</button>`;}
+      h+=`<div style="font-size:12px;color:#60a5fa;font-weight:700;margin-bottom:8px">${esc(anonName(activePatient.patient_name))} — Done</div>`;
+      if(nextP){h+=`<button class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb)" onclick="markPrepCompleted('${activePatient.id}');nextPatient()">Next Patient → ${esc(anonName(nextP.patient_name))} @ ${esc(nextP.appointment_time)}</button>`;}
       else{h+=`<button class="big" style="background:linear-gradient(135deg,#059669,#10b981)" onclick="markPrepCompleted('${activePatient.id}');activePatient=null;render()">All Patients Complete</button>`;}
       h+=`</div>`;
     }
