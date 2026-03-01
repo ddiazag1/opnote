@@ -455,7 +455,9 @@ function setEncounterType(et){encounterType=et;const m=encounterToState(et);setS
 function scribeTimerDisplay(){if(!scribeRecording)return'';const s=Math.floor((Date.now()-scribeStartTime)/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 async function scribeStartRec(){
   try{
-    await navigator.mediaDevices.getUserMedia({audio:true});
+    if(typeof SpeechSDK==='undefined'){scribeToast('Speech SDK failed to load. Check internet connection.');return;}
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(t=>t.stop());
     const {token,region}=await _getSpeechToken();
     const sc=SpeechSDK.SpeechConfig.fromAuthorizationToken(token,region);
     sc.speechRecognitionLanguage='en-US';
