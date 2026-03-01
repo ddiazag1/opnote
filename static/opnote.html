@@ -487,6 +487,53 @@ async function scribeStartRec(){
     sc.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults,'true');
     const ac=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     const ct=new SpeechSDK.ConversationTranscriber(sc,ac);
+    const phrases=SpeechSDK.PhraseListGrammar.fromRecognizer(ct);
+    [
+      // Spine anatomy
+      'cervical','thoracic','lumbar','sacral','coccyx','foramen','foraminal','neuroforamen',
+      'pedicle','lamina','facet','spinous process','transverse process','vertebral body',
+      'disc','annulus','nucleus pulposus','endplate','ligamentum flavum','posterior longitudinal ligament',
+      'anterior longitudinal ligament','thecal sac','dura','epidural','intradural','subdural',
+      'C3','C4','C5','C6','C7','T1','T12','L1','L2','L3','L4','L5','S1',
+      'C3-4','C4-5','C5-6','C6-7','C7-T1','L2-3','L3-4','L4-5','L5-S1',
+      // Diagnoses
+      'stenosis','herniation','disc herniation','bulge','protrusion','extrusion','sequestration',
+      'radiculopathy','myelopathy','spondylosis','spondylolisthesis','spondylolysis',
+      'degenerative disc disease','adjacent segment disease','pseudarthrosis',
+      'kyphosis','lordosis','scoliosis','subluxation','instability',
+      'meningioma','schwannoma','glioma','glioblastoma','metastasis','metastatic',
+      'aneurysm','arteriovenous malformation','AVM','Chiari','Chiari malformation',
+      'syringomyelia','syrinx','hydrocephalus','subdural hematoma','epidural hematoma',
+      'carpal tunnel','cubital tunnel','ulnar neuropathy','tarsal tunnel',
+      // Procedures
+      'laminectomy','laminotomy','discectomy','microdiscectomy','foraminotomy',
+      'ACDF','anterior cervical discectomy and fusion','corpectomy',
+      'TLIF','transforaminal lumbar interbody fusion',
+      'PLIF','posterior lumbar interbody fusion','ALIF','XLIF','OLIF',
+      'posterior cervical fusion','posterior spinal fusion',
+      'decompression','arthrodesis','craniotomy','craniectomy','craniotomy','cranioplasty',
+      'VP shunt','ventriculoperitoneal shunt','EVD','external ventricular drain',
+      'carpal tunnel release','cubital tunnel release','ulnar nerve transposition',
+      // Implants & tools
+      'pedicle screws','interbody cage','PEEK cage','titanium cage','rod','plate',
+      'allograft','autograft','BMP','bone morphogenetic protein',
+      'neuromonitoring','SSEP','MEP','EMG','triggered EMG',
+      'fluoroscopy','O-arm','navigation','stereotactic',
+      // Exam & symptoms
+      'dermatomal','myotomal','Spurling','Hoffman','Babinski','clonus',
+      'hyperreflexia','hyporeflexia','myelopathic','radicular',
+      'paresthesia','dysesthesia','numbness','tingling','weakness',
+      'grip strength','deltoid','biceps','triceps','wrist extensors','interossei',
+      'dorsiflexion','plantarflexion','EHL','extensor hallucis longus',
+      'straight leg raise','SLR','Lasegue',
+      // Imaging
+      'MRI','CT','CT myelogram','X-ray','flexion extension','dynamic films',
+      'T2 signal','T1 signal','STIR','gadolinium','contrast enhancement',
+      // Medications
+      'gabapentin','pregabalin','Lyrica','meloxicam','Mobic','methylprednisolone','Medrol',
+      'dexamethasone','Decadron','tizanidine','Zanaflex','cyclobenzaprine','Flexeril',
+      'epidural steroid injection','ESI','transforaminal injection','facet injection','nerve block',
+    ].forEach(p=>phrases.addPhrase(p));
     _liveTranscript=[];_liveInterim='';
     ct.transcribing=(s,e)=>{
       const spk=e.result.speakerId||'';
