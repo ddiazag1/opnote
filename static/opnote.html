@@ -117,7 +117,7 @@ function initMsal(){
   msalInstance.handleRedirectPromise().then(resp=>{if(resp)msalAccount=resp.account;else{const accts=msalInstance.getAllAccounts();if(accts.length)msalAccount=accts[0];}try{render();}catch{}}).catch(e=>console.warn('MSAL redirect error:',e));
 }
 async function msalLogin(){
-  if(!msalInstance)return;
+  if(!msalInstance){initMsal();if(!msalInstance){scribeToast('Microsoft auth not available. Check internet.');return;}}
   const req={scopes:['Notes.ReadWrite','User.Read']};
   const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
   if(isMobile){try{await msalInstance.loginRedirect(req);}catch(e){console.warn('MSAL redirect error:',e);}return;}
