@@ -101,39 +101,15 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 .mdm-arrow{color:#3b82f6;font-size:16px}
 </style>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
-<script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 </head>
 <body>
 <div id="app" class="w"></div>
 <audio id="scribeSilentAudio" loop><source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" type="audio/wav"></audio>
 <script>
 "use strict";
-// ---- MSAL / MICROSOFT AUTH ----
-const msalConfig={auth:{clientId:'a05288ce-a667-4298-ace2-3da305f34782',authority:'https://login.microsoftonline.com/consumers',redirectUri:location.origin},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:true}};
-let msalInstance=null;let msalAccount=null;
-function initMsal(){
-  if(typeof msal==='undefined')return;
-  msalInstance=new msal.PublicClientApplication(msalConfig);
-  msalInstance.handleRedirectPromise().then(resp=>{if(resp)msalAccount=resp.account;else{const accts=msalInstance.getAllAccounts();if(accts.length)msalAccount=accts[0];}try{render();}catch{}}).catch(e=>console.warn('MSAL redirect error:',e));
-}
-async function msalLogin(){
-  if(!msalInstance){initMsal();if(!msalInstance){scribeToast('Microsoft auth not available. Check internet.');return;}}
-  const req={scopes:['Notes.ReadWrite','User.Read']};
-  const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
-  if(isMobile){try{await msalInstance.loginRedirect(req);}catch(e){console.warn('MSAL redirect error:',e);}return;}
-  try{const resp=await msalInstance.loginPopup(req);msalAccount=resp.account;render();}
-  catch(e){if(e.errorCode==='popup_window_error'||e.errorCode==='empty_window_error'){try{await msalInstance.loginRedirect(req);}catch(e2){console.warn('MSAL redirect login error:',e2);}}else console.warn('MSAL login error:',e);}
-}
-function msalLogout(){if(!msalInstance)return;msalInstance.logoutPopup({account:msalAccount}).then(()=>{msalAccount=null;render();}).catch(()=>{msalAccount=null;render();});}
-async function getGraphToken(){
-  if(!msalInstance||!msalAccount)throw new Error('Not signed in to Microsoft');
-  const req={scopes:['Notes.ReadWrite'],account:msalAccount};
-  try{const resp=await msalInstance.acquireTokenSilent(req);return resp.accessToken;}
-  catch(e){const resp=await msalInstance.acquireTokenPopup(req);return resp.accessToken;}
-}
 // ---- CONFIG ----
 let serverReachable=false;
-(async function(){try{initMsal();}catch{}try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
+(async function(){try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
 setInterval(()=>{if(serverReachable&&!_syncing)syncCases();},30000);
 
 // ---- ACCESS PIN ----
@@ -1018,34 +994,12 @@ let docImages=[];let clinImages=[];
 function todayISO(){return new Date().toISOString().slice(0,10);}
 function calculateAge(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const now=new Date();let age=now.getFullYear()-d.getFullYear();if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate()))age--;return age;}
 
-// ---- ONENOTE (direct Graph API via MSAL) ----
-function oneNoteGetCache(){try{return JSON.parse(localStorage.getItem('onenote-cache'))||{};}catch{return {};}}
-function oneNoteSaveCache(c){localStorage.setItem('onenote-cache',JSON.stringify(c));}
-
-async function graphFetch(url,opts={}){
-  const token=await getGraphToken();
-  opts.headers=opts.headers||{};opts.headers['Authorization']='Bearer '+token;
-  const r=await fetch(url,opts);if(!r.ok){const t=await r.text().catch(()=>'');throw new Error('Graph API '+r.status+': '+t.slice(0,200));}return r;
-}
-
 function formatOneNoteTitle(){
   const now=new Date();const hh=String(now.getHours()).padStart(2,'0');const mm=String(now.getMinutes()).padStart(2,'0');
   let title=hh+':'+mm;
   if(phiState.name){const parts=phiState.name.trim().split(/[\s,]+/).filter(Boolean);if(parts.length>=2){if(phiState.name.includes(','))title+=' \u00B7 '+parts[0]+', '+parts.slice(1).join(' ');else title+=' \u00B7 '+parts[parts.length-1]+', '+parts.slice(0,-1).join(' ');}else title+=' \u00B7 '+parts[0];}
   const age=calculateAge(phiState.dob);if(age!==null)title+=' \u00B7 '+age+'y';
   return title;
-}
-
-async function oneNoteEnsureSection(sectionName){
-  const cache=oneNoteGetCache();const cacheKey='section:'+sectionName;
-  if(cache[cacheKey]&&cache._date===todayISO()&&cache.notebookName)return {sectionId:cache[cacheKey],notebookName:cache.notebookName};
-  let nbId=cache.notebookId;let nbName=cache.notebookName;
-  if(!nbId){const r=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks?$top=1');const d=await r.json();if(!d.value||!d.value.length)throw new Error('No OneNote notebooks found. Create one at onenote.com first.');nbId=d.value[0].id;nbName=d.value[0].displayName||'Unknown';cache.notebookId=nbId;cache.notebookName=nbName;}
-  const sr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections');
-  const sd=await sr.json();const existing=(sd.value||[]).find(s=>s.displayName===sectionName);
-  if(existing){cache[cacheKey]=existing.id;cache._date=todayISO();oneNoteSaveCache(cache);return {sectionId:existing.id,notebookName:nbName||cache.notebookName};}
-  const cr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:sectionName})});
-  const cd=await cr.json();cache[cacheKey]=cd.id;cache._date=todayISO();oneNoteSaveCache(cache);return {sectionId:cd.id,notebookName:nbName||cache.notebookName};
 }
 
 function pickOneNoteImage(type){
@@ -1063,57 +1017,53 @@ function pickOneNoteImage(type){
   };inp.click();
 }
 
-async function oneNoteSend(){
-  setState({phase:'onenote'});
+function buildNoteHTML(){
+  const note=formatEMR(phiRehydrate(state.noteText))||'';
+  const preauth=formatEMR(phiRehydrate(state.billPreauth))||'';
+  const codes=state.billCodes||'';
+  const dt=todayISO();
+  const pageTitle=formatOneNoteTitle();
+  const noteHtml=esc(note).replace(/^([A-Z][A-Z &\/\-]+:)/gm,'</p><p><b>$1</b>').replace(/\n/g,'<br/>');
+  const cptLines=codes?codes.split('\n').filter(l=>l.trim()):[];
+  let cptHtml='';
+  if(cptLines.length){
+    cptHtml='<h2>CPT Codes / RVU</h2><table border="1" style="border-collapse:collapse"><tr><th style="padding:4px 8px">Code</th><th style="padding:4px 8px">RVU</th><th style="padding:4px 8px">Description</th></tr>';
+    cptLines.forEach(l=>{const m=l.match(/(\d{5})/);const rest=l.replace(/\d{5}\s*/,'');if(m){const rvu=RVU_TABLE[parseInt(m[1])]||'';cptHtml+='<tr><td style="padding:4px 8px;font-weight:bold">'+m[1]+'</td><td style="padding:4px 8px">'+rvu+'</td><td style="padding:4px 8px">'+esc(rest)+'</td></tr>';}});
+    cptHtml+='</table>';
+  }
+  const preauthHtml=preauth?'<h2>Pre-Authorization</h2><p>'+esc(preauth).replace(/\n/g,'<br/>')+'</p>':'';
+  let ocrHtml='';
+  if(docImages.length){const ocrTexts=docImages.map(d=>d.ocrText).filter(Boolean);if(ocrTexts.length)ocrHtml='<h2>OCR Document Text</h2><p style="font-family:monospace;font-size:11px;white-space:pre-wrap">'+esc(ocrTexts.join('\n\n---\n\n'))+'</p>';}
+  let docImgHtml='';let clinImgHtml='';
+  if(docImages.length){docImgHtml='<h2>Documents</h2>';docImages.forEach(d=>{docImgHtml+='<img src="data:'+d.mimeType+';base64,'+d.base64+'" alt="document" style="max-width:600px;margin:4px 0" />';});}
+  if(clinImages.length){clinImgHtml='<h2>Clinical Images</h2>';clinImages.forEach(d=>{clinImgHtml+='<img src="data:'+d.mimeType+';base64,'+d.base64+'" alt="clinical" style="max-width:600px;margin:4px 0" />';});}
+  let html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(pageTitle)+'</title><style>body{font-family:Segoe UI,sans-serif;max-width:800px;margin:20px auto;padding:0 16px}table{margin:8px 0}th,td{text-align:left}</style></head><body>';
+  html+='<h1>'+esc(pageTitle)+'</h1>';
+  html+='<p style="color:gray">'+dt+' \u00B7 '+esc(typeCat(state.nt))+'</p>';
+  html+='<h2>Note</h2><p>'+noteHtml+'</p>';
+  html+=cptHtml+preauthHtml+ocrHtml+docImgHtml+clinImgHtml;
+  html+='</body></html>';
+  return {html,pageTitle,dt};
+}
+
+async function shareNote(){
   try{
-    const note=formatEMR(phiRehydrate(state.noteText))||'';
-    const preauth=formatEMR(phiRehydrate(state.billPreauth))||'';
-    const codes=state.billCodes||'';
-    const dt=todayISO();
-    const sectionName=typeCat(state.nt)+' '+dt;
-    const {sectionId,notebookName}=await oneNoteEnsureSection(sectionName);
-    const pageTitle=formatOneNoteTitle();
-    const noteHtml=esc(note).replace(/^([A-Z][A-Z &\/\-]+:)/gm,'</p><p><b>$1</b>').replace(/\n/g,'<br/>');
-    const cptLines=codes?codes.split('\n').filter(l=>l.trim()):[];
-    let cptHtml='';
-    if(cptLines.length){
-      cptHtml='<h2>CPT Codes / RVU</h2><table border="1" style="border-collapse:collapse"><tr><th style="padding:4px 8px">Code</th><th style="padding:4px 8px">RVU</th><th style="padding:4px 8px">Description</th></tr>';
-      cptLines.forEach(l=>{const m=l.match(/(\d{5})/);const rest=l.replace(/\d{5}\s*/,'');if(m){const rvu=RVU_TABLE[parseInt(m[1])]||'';cptHtml+='<tr><td style="padding:4px 8px;font-weight:bold">'+m[1]+'</td><td style="padding:4px 8px">'+rvu+'</td><td style="padding:4px 8px">'+esc(rest)+'</td></tr>';}});
-      cptHtml+='</table>';
-    }
-    const preauthHtml=preauth?'<h2>Pre-Authorization</h2><p>'+esc(preauth).replace(/\n/g,'<br/>')+'</p>':'';
-    let ocrHtml='';
-    if(docImages.length){const ocrTexts=docImages.map(d=>d.ocrText).filter(Boolean);if(ocrTexts.length)ocrHtml='<h2>OCR Document Text</h2><p style="font-family:monospace;font-size:11px;white-space:pre-wrap">'+esc(ocrTexts.join('\n\n---\n\n'))+'</p>';}
-    // Collect images for multipart
-    const allImages=[];let imgIdx=0;let docImgHtml='';let clinImgHtml='';
-    if(docImages.length){docImgHtml='<h2>Documents</h2>';docImages.forEach(d=>{const name='img'+(imgIdx++);allImages.push({name,base64:d.base64,mimeType:d.mimeType});docImgHtml+='<img src="name:'+name+'" alt="document" style="max-width:600px;margin:4px 0" />';});}
-    if(clinImages.length){clinImgHtml='<h2>Clinical Images</h2>';clinImages.forEach(d=>{const name='img'+(imgIdx++);allImages.push({name,base64:d.base64,mimeType:d.mimeType});clinImgHtml+='<img src="name:'+name+'" alt="clinical" style="max-width:600px;margin:4px 0" />';});}
-    let html='<!DOCTYPE html><html><head><title>'+esc(pageTitle)+'</title></head><body>';
-    html+='<h1>'+esc(pageTitle)+'</h1>';
-    html+='<p style="color:gray">'+dt+' \u00B7 '+esc(typeCat(state.nt))+'</p>';
-    html+='<h2>Note</h2><p>'+noteHtml+'</p>';
-    html+=cptHtml+preauthHtml+ocrHtml+docImgHtml+clinImgHtml;
-    html+='</body></html>';
-    const token=await getGraphToken();
-    const url='https://graph.microsoft.com/v1.0/me/onenote/sections/'+sectionId+'/pages';
-    if(allImages.length){
-      // Multipart request with images using Blob parts for binary safety
-      const boundary='OneNoteBoundary'+Date.now();const enc=new TextEncoder();const parts=[];
-      parts.push(enc.encode('--'+boundary+'\r\nContent-Disposition: form-data; name="Presentation"\r\nContent-Type: text/html\r\n\r\n'+html+'\r\n'));
-      for(const img of allImages){const bin=atob(img.base64);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);parts.push(enc.encode('--'+boundary+'\r\nContent-Disposition: form-data; name="'+img.name+'"\r\nContent-Type: '+img.mimeType+'\r\n\r\n'));parts.push(bytes);parts.push(enc.encode('\r\n'));}
-      parts.push(enc.encode('--'+boundary+'--\r\n'));
-      const blob=new Blob(parts);
-      const r=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'multipart/form-data; boundary='+boundary},body:blob});
-      if(!r.ok)throw new Error('OneNote send failed: '+r.status);
+    const {html,pageTitle,dt}=buildNoteHTML();
+    const typeName=typeCat(state.nt)||'Note';
+    const fileName=typeName.replace(/\s+/g,'-')+'_'+dt+'_'+pageTitle.replace(/[^a-zA-Z0-9]/g,'-').replace(/-+/g,'-').slice(0,40)+'.html';
+    const file=new File([html],fileName,{type:'text/html'});
+    const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
+    if(isMobile&&navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({title:pageTitle,files:[file]});
+      scribeToast('Shared! Save to OneDrive for HIPAA storage.');
     }else{
-      const r=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'text/html'},body:html});
-      if(!r.ok)throw new Error('OneNote send failed: '+r.status);
+      const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=fileName;a.click();URL.revokeObjectURL(a.href);
+      scribeToast('Downloaded '+fileName);
     }
-    setState({phase:'done'});
-    scribeToast('Sent to "'+notebookName+'" > '+sectionName);
-    const btn=document.getElementById('oneNoteBtn');if(btn){btn.innerHTML='\u2705 Sent!';btn.style.background='#059669';setTimeout(()=>{if(btn){btn.innerHTML='\uD83D\uDCD3 Send to OneNote';btn.style.background='';}},3000);}
+    const btn=document.getElementById('shareNoteBtn');if(btn){btn.innerHTML='\u2705 Done!';btn.style.background='#059669';setTimeout(()=>{if(btn){btn.innerHTML='\uD83D\uDCE4 Share / Save';btn.style.background='';}},2000);}
   }catch(e){
-    setState({err:'OneNote: '+e.message,phase:'done'});
+    if(e.name==='AbortError')return; // user cancelled share sheet
+    scribeToast('Share error: '+e.message);
   }
 }
 
@@ -1649,13 +1599,12 @@ function render(){
     if(!state._phaseStart)state._phaseStart=Date.now();
     else{const elapsed=Date.now()-state._phaseStart;if(elapsed>90000){state.phase="";state._phaseStart=null;}else if(elapsed>30000)_phaseWarn=true;}
   }else{state._phaseStart=null;}
-  const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check...",onenote:"Sending to OneNote..."};
+  const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check..."};
   let h="";
 
   // HEADER
   const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure (HIPAA)</span>';
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}</div></div><div style="display:flex;gap:6px">`;
-  h+=`<button class="btn" style="background:${msalAccount?'#059669':'#7c3aed'};font-size:10px;padding:6px 10px" onclick="${msalAccount?'setState({showSettings:true})':'msalLogin()'}">${msalAccount?'\u2705 MS':'\uD83D\uDD12 MS Login'}</button>`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;scribeOpen=true;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
   h+=`</div></div>`;
@@ -1676,9 +1625,6 @@ function render(){
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
     h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:12px">`;
-    h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:12px">Microsoft Account (OneNote)</div>`;
-    if(msalAccount){h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:12px;color:#86efac">\u2705 ${esc(msalAccount.username)}</span><button class="btn" style="background:#7f1d1d;padding:4px 10px;font-size:10px" onclick="msalLogout()">Sign Out</button></div>`;}
-    else{h+=`<button class="btn" style="background:#7c3aed;margin-bottom:8px;padding:8px 14px;font-size:12px" onclick="msalLogin()">\uD83D\uDD12 Sign in to Microsoft</button>`;}
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
     h+=`</div>`;
   }
@@ -1996,10 +1942,11 @@ function render(){
       h+=`<button class="big" style="background:linear-gradient(135deg,#4338ca,#6366f1);margin-top:8px" onclick="rerunBilling()" ${isL?"disabled":""}>🔄 Re-run Billing</button>`;
       h+=`<button id="coderBtn" class="big" style="background:#334155;margin-top:8px" onclick="sendToCoder(state.noteText,state.billRaw)">📧 Copy → Coder</button>`;
     }
-    // OneNote
-    if(s.noteText&&msalAccount){
-      h+=`<button id="oneNoteBtn" class="big" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-top:8px" onclick="oneNoteSend()" ${isL?"disabled":""}>\uD83D\uDCD3 Send to OneNote</button>`;
-      h+=`<div class="card" style="border-color:#7c3aed40;margin-top:8px"><div class="card-h"><span class="title" style="font-size:12px;color:#c4b5fd">\uD83D\uDCCE OneNote Attachments</span></div><div class="card-b" style="padding:10px">`;
+    // Share / Save
+    if(s.noteText){
+      h+=`<button id="shareNoteBtn" class="big" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-top:8px" onclick="shareNote()" ${isL?"disabled":""}>\uD83D\uDCE4 Share / Save</button>`;
+      h+=`<div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px">Mobile: share to OneDrive \u00B7 Desktop: downloads HTML</div>`;
+      h+=`<div class="card" style="border-color:#7c3aed40;margin-top:8px"><div class="card-h"><span class="title" style="font-size:12px;color:#c4b5fd">\uD83D\uDCCE Attachments</span></div><div class="card-b" style="padding:10px">`;
       h+=`<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="pickOneNoteImage('doc')">📄 + Document</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="pickOneNoteImage('clin')">🩺 + Clinical</button></div>`;
       if(docImages.length)h+=`<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">${docImages.length} document image${docImages.length>1?'s':''}</div>`;
       if(clinImages.length)h+=`<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">${clinImages.length} clinical image${clinImages.length>1?'s':''}</div>`;
