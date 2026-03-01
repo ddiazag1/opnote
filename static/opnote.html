@@ -496,7 +496,6 @@ async function scribeStartRec(){
     ct.transcribed=(s,e)=>{
       if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech){
         const spk=e.result.speakerId||'Unknown';
-        scribeToast('DEBUG speakerId='+JSON.stringify(e.result.speakerId)+' keys='+Object.getOwnPropertyNames(e.result).join(','));
         _liveTranscript.push(`[${spk}]: ${e.result.text}`);
         _liveInterim='';
         render();
