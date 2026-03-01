@@ -119,6 +119,8 @@ function initMsal(){
 async function msalLogin(){
   if(!msalInstance)return;
   const req={scopes:['Notes.ReadWrite','User.Read']};
+  const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
+  if(isMobile){try{await msalInstance.loginRedirect(req);}catch(e){console.warn('MSAL redirect error:',e);}return;}
   try{const resp=await msalInstance.loginPopup(req);msalAccount=resp.account;render();}
   catch(e){if(e.errorCode==='popup_window_error'||e.errorCode==='empty_window_error'){try{await msalInstance.loginRedirect(req);}catch(e2){console.warn('MSAL redirect login error:',e2);}}else console.warn('MSAL login error:',e);}
 }
