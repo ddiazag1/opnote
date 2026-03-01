@@ -101,6 +101,7 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 .mdm-arrow{color:#3b82f6;font-size:16px}
 </style>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 <div id="app" class="w"></div>
@@ -1077,6 +1078,7 @@ let prepPanelOpen=true;
 let prepNotes={};
 let prepPasteModal=false;
 let prepPasteText="";
+let ocrProgress="";
 let prepAddForm=false;
 let prepAddName="";
 let prepAddTime="08:00";
@@ -1146,6 +1148,22 @@ function addManualPatient(name,time,type){
   const isSurgery=time<'08:00';
   prepSchedule.push({id,patient_name:name,appointment_time:time,is_surgery:isSurgery,visit_type:type,briefing:'',agent_status:'none'});
   prepAddForm=false;prepAddName="";prepAddTime="08:00";prepAddType="Follow-up";render();
+}
+
+function scanSchedule(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.onchange=async()=>{
+    if(!inp.files[0])return;
+    if(typeof Tesseract==='undefined'){scribeToast('OCR library not loaded. Check internet.');return;}
+    ocrProgress='Starting OCR...';prepPasteModal=true;render();
+    try{
+      const result=await Tesseract.recognize(inp.files[0],'eng',{
+        logger:m=>{if(m.status==='recognizing text'){ocrProgress='OCR: '+Math.round((m.progress||0)*100)+'%';render();}}
+      });
+      prepPasteText=result.data.text||'';
+      ocrProgress='';render();
+    }catch(e){ocrProgress='';scribeToast('OCR error: '+e.message);render();}
+  };inp.click();
 }
 
 function parseBriefingSections(text){
@@ -1646,7 +1664,8 @@ function render(){
       if(prepLoading){h+=`<div class="ld">Loading schedule...</div>`;}
       else if(!prepSchedule.length){
         h+=`<div style="text-align:center;padding:20px"><div style="font-size:13px;color:#475569;margin-bottom:12px">No schedule loaded</div>`;
-        h+=`<div style="display:flex;gap:8px;justify-content:center"><button class="btn" style="background:#2563eb;padding:10px 16px;font-size:12px" onclick="prepPasteModal=true;render()">Paste Schedule</button>`;
+        h+=`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" style="background:#7c3aed;padding:10px 16px;font-size:12px" onclick="scanSchedule()">📷 Scan Schedule</button>`;
+        h+=`<button class="btn" style="background:#2563eb;padding:10px 16px;font-size:12px" onclick="prepPasteModal=true;render()">Paste Schedule</button>`;
         h+=`<button class="btn" style="background:#334155;padding:10px 16px;font-size:12px" onclick="prepAddForm=true;render()">+ Add Patient</button>`;
         h+=`<button class="btn" style="background:#059669;padding:10px 16px;font-size:12px" onclick="loadDemoSchedule()">Load Demo</button></div></div>`;
       }else{
@@ -1715,14 +1734,15 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste Schedule</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
       }
       // Paste schedule modal
       if(prepPasteModal){
         h+=`<div style="margin-top:10px;background:#020617;border:1px solid #3b82f6;border-radius:10px;padding:12px">`;
-        h+=`<div style="font-size:12px;font-weight:700;color:#60a5fa;margin-bottom:6px">Paste Schedule Text</div>`;
-        h+=`<textarea class="ta" rows="6" placeholder="Paste your schedule here..." style="font-size:12px;margin-bottom:8px" oninput="prepPasteText=this.value">${esc(prepPasteText)}</textarea>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#2563eb;flex:1;padding:10px;font-size:12px" onclick="parseScheduleText(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>Parse</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepPasteModal=false;render()">Cancel</button></div></div>`;
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:#60a5fa">Schedule Text</span><button class="btn" style="background:#7c3aed;padding:4px 10px;font-size:10px" onclick="scanSchedule()">📷 Scan Photo</button></div>`;
+        if(ocrProgress)h+=`<div style="font-size:11px;color:#a78bfa;margin-bottom:6px">${esc(ocrProgress)}</div>`;
+        h+=`<textarea class="ta" rows="6" placeholder="Paste schedule text or scan a photo..." style="font-size:12px;margin-bottom:8px" oninput="prepPasteText=this.value">${esc(prepPasteText)}</textarea>`;
+        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#2563eb;flex:1;padding:10px;font-size:12px" onclick="parseScheduleText(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>Parse</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepPasteModal=false;ocrProgress='';render()">Cancel</button></div></div>`;
       }
       // Add patient form
       if(prepAddForm){
