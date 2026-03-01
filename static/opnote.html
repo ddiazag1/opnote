@@ -1058,68 +1058,57 @@ function renderPatientImageUI(pid){
   return h;
 }
 
-async function exportDayDocx(){
+function exportDayDocx(){
   if(!prepSchedule.length){scribeToast('No schedule to export');return;}
+  if(typeof docx==='undefined'){scribeToast('DOCX library not loaded — reload page');return;}
   try{
-    const{Document,Packer,Paragraph,TextRun,ImageRun,HeadingLevel,AlignmentType,Table,TableRow,TableCell,WidthType,BorderStyle}=docx;
     const date=todayISO();
     const children=[];
-    children.push(new Paragraph({heading:HeadingLevel.HEADING_1,children:[new TextRun({text:'Daily Schedule & Briefings',bold:true})]}));
-    children.push(new Paragraph({children:[new TextRun({text:date+' \u2022 '+prepSchedule.length+' patient'+(prepSchedule.length>1?'s':''),color:'666666'})]}));
-    children.push(new Paragraph({text:''}));
+    children.push(new docx.Paragraph({heading:docx.HeadingLevel.HEADING_1,children:[new docx.TextRun({text:'Daily Schedule & Briefings',bold:true})]}));
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:date+' - '+prepSchedule.length+' patient'+(prepSchedule.length>1?'s':'')})]}));
+    children.push(new docx.Paragraph({text:''}));
     for(const p of prepSchedule){
-      children.push(new Paragraph({heading:HeadingLevel.HEADING_2,children:[new TextRun({text:p.appointment_time+' \u2014 '+p.patient_name,bold:true})]}));
-      children.push(new Paragraph({children:[new TextRun({text:'Visit Type: '+p.visit_type,italics:true,color:'3b82f6'})]}));
+      children.push(new docx.Paragraph({heading:docx.HeadingLevel.HEADING_2,children:[new docx.TextRun({text:(p.appointment_time||'')+' - '+(p.patient_name||''),bold:true})]}));
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Visit Type: '+(p.visit_type||''),italics:true})]}));
       if(p.briefing){
-        const secs=parseBriefingSections(p.briefing);
-        for(const[key,val] of Object.entries(secs)){
-          children.push(new Paragraph({children:[new TextRun({text:key+': ',bold:true}),new TextRun({text:val})]}));
+        const lines=(p.briefing||'').split('\n');
+        for(const line of lines){
+          const m=line.match(/^([A-Z][A-Z /&\-]+):\s*(.*)/);
+          if(m){children.push(new docx.Paragraph({children:[new docx.TextRun({text:m[1]+': ',bold:true}),new docx.TextRun({text:m[2]})]}));}
+          else{children.push(new docx.Paragraph({children:[new docx.TextRun({text:line,font:'Consolas',size:18})]}));}
         }
-        children.push(new Paragraph({text:''}));
-        children.push(new Paragraph({children:[new TextRun({text:p.briefing,font:'Consolas',size:18})]}));
       }
       if(prepNotes[p.id]){
-        children.push(new Paragraph({children:[new TextRun({text:'Notes: ',bold:true}),new TextRun({text:prepNotes[p.id]})]}));
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Notes: ',bold:true}),new docx.TextRun({text:prepNotes[p.id]})]}));
       }
       const imgs=prepImages[p.id]||[];
-      const refs=imgs.filter(i=>i.category==='reference');
-      const notes=imgs.filter(i=>i.category==='note');
-      if(refs.length){
-        children.push(new Paragraph({children:[new TextRun({text:'Reference Images:',bold:true})]}));
-        for(const img of refs){
-          try{
-            const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
-            children.push(new Paragraph({children:[new ImageRun({data:buf,transformation:{width:500,height:375},type:img.mimeType==='image/png'?'png':'jpg'})]}));
-          }catch(e){}
-        }
+      for(const img of imgs){
+        try{
+          const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
+          children.push(new docx.Paragraph({children:[new docx.TextRun({text:(img.category==='reference'?'Reference':'Note')+' Image:',bold:true})]}));
+          const w=img.category==='reference'?500:400;
+          const h=img.category==='reference'?375:300;
+          children.push(new docx.Paragraph({children:[new docx.ImageRun({data:buf,transformation:{width:w,height:h}})]}));
+          if(img.ocrText){children.push(new docx.Paragraph({children:[new docx.TextRun({text:img.ocrText,font:'Consolas',size:18})]}));}
+        }catch(ie){children.push(new docx.Paragraph({children:[new docx.TextRun({text:'[Image embed failed: '+ie.message+']'})]}));}
       }
-      if(notes.length){
-        children.push(new Paragraph({children:[new TextRun({text:'Note Images (OCR):',bold:true})]}));
-        for(const img of notes){
-          try{
-            const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
-            children.push(new Paragraph({children:[new ImageRun({data:buf,transformation:{width:400,height:300},type:img.mimeType==='image/png'?'png':'jpg'})]}));
-          }catch(e){}
-          if(img.ocrText){
-            children.push(new Paragraph({children:[new TextRun({text:img.ocrText,font:'Consolas',size:18})]}));
-          }
-        }
+      children.push(new docx.Paragraph({text:''}));
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:'_______________________________________________'})]}));
+      children.push(new docx.Paragraph({text:''}));
+    }
+    const doc=new docx.Document({sections:[{children}]});
+    docx.Packer.toBlob(doc).then(function(blob){
+      const fname='OpNote-Schedule-'+date+'.docx';
+      const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
+      if(isMobile&&navigator.canShare){
+        const file=new File([blob],fname,{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+        if(navigator.canShare({files:[file]})){navigator.share({title:'OpNote Schedule',files:[file]});return;}
       }
-      children.push(new Paragraph({text:''}));
-      children.push(new Paragraph({text:'_______________________________________________'}));
-      children.push(new Paragraph({text:''}));
-    }
-    const doc=new Document({sections:[{children}]});
-    const blob=await Packer.toBlob(doc);
-    const fname='OpNote-Schedule-'+date+'.docx';
-    const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
-    if(isMobile&&navigator.canShare){
-      const file=new File([blob],fname,{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-      if(navigator.canShare({files:[file]})){await navigator.share({title:'OpNote Schedule',files:[file]});return;}
-    }
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
-    scribeToast('Downloaded '+fname);
-  }catch(e){scribeToast('DOCX error: '+e.message);}
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);},5000);
+      scribeToast('Downloaded '+fname);
+    }).catch(function(e){scribeToast('DOCX pack error: '+e.message);});
+  }catch(e){scribeToast('DOCX error: '+e.message);alert('DOCX error: '+e.message);}
 }
 
 function buildNoteHTML(){
