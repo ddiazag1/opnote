@@ -1066,8 +1066,8 @@ function pickOneNoteImage(type){
 async function oneNoteSend(){
   setState({phase:'onenote'});
   try{
-    const note=phiRehydrate(state.noteText)||'';
-    const preauth=phiRehydrate(state.billPreauth)||'';
+    const note=formatEMR(phiRehydrate(state.noteText))||'';
+    const preauth=formatEMR(phiRehydrate(state.billPreauth))||'';
     const codes=state.billCodes||'';
     const dt=todayISO();
     const sectionName=typeCat(state.nt)+' '+dt;
