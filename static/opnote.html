@@ -461,30 +461,31 @@ async function scribeStartRec(){
     const {token,region}=await _getSpeechToken();
     const sc=SpeechSDK.SpeechConfig.fromAuthorizationToken(token,region);
     sc.speechRecognitionLanguage='en-US';
+    sc.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults,'true');
     const ac=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const reco=new SpeechSDK.SpeechRecognizer(sc,ac);
+    const ct=new SpeechSDK.ConversationTranscriber(sc,ac);
     _liveTranscript=[];_liveInterim='';
-    reco.recognizing=(s,e)=>{
-      if(e.result.reason===SpeechSDK.ResultReason.RecognizingSpeech){
-        _liveInterim=e.result.text;
-        render();
-      }
+    ct.transcribing=(s,e)=>{
+      const spk=e.result.speakerId||'';
+      _liveInterim=spk?`[${spk}]: ${e.result.text}`:e.result.text;
+      render();
     };
-    reco.recognized=(s,e)=>{
+    ct.transcribed=(s,e)=>{
       if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech){
-        _liveTranscript.push(e.result.text);
+        const spk=e.result.speakerId||'Unknown';
+        _liveTranscript.push(`[${spk}]: ${e.result.text}`);
         _liveInterim='';
         render();
       }
     };
-    reco.canceled=(s,e)=>{
+    ct.canceled=(s,e)=>{
       if(e.reason===SpeechSDK.CancellationReason.Error){
         scribeToast('Speech error: '+e.errorDetails);
       }
     };
-    reco.sessionStopped=()=>{};
-    await reco.startContinuousRecognitionAsync();
-    _speechRecognizer=reco;
+    ct.sessionStopped=()=>{};
+    await ct.startTranscribingAsync();
+    _speechRecognizer=ct;
     scribeRecording=true;scribeStartTime=Date.now();
     scribeTimerInterval=setInterval(()=>render(),1000);
     try{if('wakeLock' in navigator)scribeWakeLock=await navigator.wakeLock.request('screen');}catch{}
@@ -494,7 +495,7 @@ async function scribeStartRec(){
 }
 async function scribeStopRec(){
   if(_speechRecognizer){
-    try{await _speechRecognizer.stopContinuousRecognitionAsync();}catch{}
+    try{await _speechRecognizer.stopTranscribingAsync();}catch{}
     try{_speechRecognizer.close();}catch{}
     _speechRecognizer=null;
   }
