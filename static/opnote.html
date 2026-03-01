@@ -101,15 +101,37 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 .mdm-arrow{color:#3b82f6;font-size:16px}
 </style>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 </head>
 <body>
 <div id="app" class="w"></div>
 <audio id="scribeSilentAudio" loop><source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" type="audio/wav"></audio>
 <script>
 "use strict";
+// ---- MSAL / MICROSOFT AUTH ----
+const msalConfig={auth:{clientId:'14d82eec-204b-4c2f-b7e8-296a70dab67e',authority:'https://login.microsoftonline.com/ff0f2203-b39b-46da-8aec-f202745c09ac',redirectUri:location.origin},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:true}};
+let msalInstance=null;let msalAccount=null;
+function initMsal(){
+  if(typeof msal==='undefined')return;
+  msalInstance=new msal.PublicClientApplication(msalConfig);
+  msalInstance.handleRedirectPromise().then(resp=>{if(resp)msalAccount=resp.account;else{const accts=msalInstance.getAllAccounts();if(accts.length)msalAccount=accts[0];}try{render();}catch{}}).catch(e=>console.warn('MSAL redirect error:',e));
+}
+async function msalLogin(){
+  if(!msalInstance)return;
+  const req={scopes:['Notes.ReadWrite','User.Read']};
+  try{const resp=await msalInstance.loginPopup(req);msalAccount=resp.account;render();}
+  catch(e){if(e.errorCode==='popup_window_error'||e.errorCode==='empty_window_error'){try{await msalInstance.loginRedirect(req);}catch(e2){console.warn('MSAL redirect login error:',e2);}}else console.warn('MSAL login error:',e);}
+}
+function msalLogout(){if(!msalInstance)return;msalInstance.logoutPopup({account:msalAccount}).then(()=>{msalAccount=null;render();}).catch(()=>{msalAccount=null;render();});}
+async function getGraphToken(){
+  if(!msalInstance||!msalAccount)throw new Error('Not signed in to Microsoft');
+  const req={scopes:['Notes.ReadWrite'],account:msalAccount};
+  try{const resp=await msalInstance.acquireTokenSilent(req);return resp.accessToken;}
+  catch(e){const resp=await msalInstance.acquireTokenPopup(req);return resp.accessToken;}
+}
 // ---- CONFIG ----
 let serverReachable=false;
-(async function(){try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
+(async function(){try{initMsal();}catch{}try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
 setInterval(()=>{if(serverReachable&&!_syncing)syncCases();},30000);
 
 // ---- ACCESS PIN ----
@@ -409,7 +431,8 @@ function noteTypeLabel(t){return TYPES[t]?TYPES[t].e+" "+TYPES[t].l:"📋 Note";
 
 // ---- LLM (server-proxied Azure OpenAI) ----
 async function callLLM(messages,sys,maxTokens=8192){
-  const msgs=sys?[{role:"system",content:sys},...messages]:messages;
+  const stripped=messages.map(m=>({...m,content:phiStrip(m.content)}));
+  const msgs=sys?[{role:"system",content:phiStrip(sys)},...stripped]:stripped;
   const body={messages:msgs,max_tokens:maxTokens,temperature:0.3};
   const resp=await authFetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!resp.ok)throw new Error('Server error '+resp.status+': '+(await resp.text()).slice(0,300));
@@ -473,6 +496,7 @@ async function scribeStartRec(){
     ct.transcribed=(s,e)=>{
       if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech){
         const spk=e.result.speakerId||'Unknown';
+        scribeToast('DEBUG speakerId='+JSON.stringify(e.result.speakerId)+' keys='+Object.getOwnPropertyNames(e.result).join(','));
         _liveTranscript.push(`[${spk}]: ${e.result.text}`);
         _liveInterim='';
         render();
@@ -669,8 +693,8 @@ function parseBillFull(raw){
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
 function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cranial Nerves|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
-function copyHTML(t,bid){const txt=formatEMR(t);const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<br><b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});html=html.replace(/^<br>/,"");plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
-function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(t)).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
+function copyHTML(t,bid){const txt=formatEMR(phiRehydrate(t));const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<br><b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});html=html.replace(/^<br>/,"");plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
+function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(phiRehydrate(t))).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
 function copyForAgent(bid){
   var noteText=formatEMR(state.editing?state.editText:state.noteText);
@@ -930,6 +954,119 @@ let state={
   tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:"",_draftId:null
 };
 function setState(p){Object.assign(state,p);render();}
+
+// ---- PHI STATE (local only, never sent to API) ----
+let phiState={name:'',dob:'',mrn:''};
+const PHI_TOKENS={name:'[PATIENT_NAME]',dob:'[PATIENT_DOB]',mrn:'[PATIENT_MRN]'};
+function phiStrip(text){
+  if(!text)return text;let t=text;
+  if(phiState.name){const parts=phiState.name.trim().split(/\s+/);const e2=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');t=t.replace(new RegExp(e2(phiState.name.trim()),'gi'),PHI_TOKENS.name);parts.filter(p=>p.length>=3).forEach(part=>{t=t.replace(new RegExp('\\b'+e2(part)+'\\b','gi'),PHI_TOKENS.name);});}
+  if(phiState.dob){const d=new Date(phiState.dob);if(!isNaN(d)){[phiState.dob,d.toLocaleDateString('en-US'),d.toISOString().slice(0,10)].filter(Boolean).forEach(fmt=>{t=t.replace(new RegExp(fmt.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'),PHI_TOKENS.dob);});}}
+  if(phiState.mrn){t=t.replace(new RegExp(phiState.mrn.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'),PHI_TOKENS.mrn);}
+  return t;
+}
+function phiRehydrate(text){if(!text)return text;let t=text;if(phiState.name)t=t.replaceAll(PHI_TOKENS.name,phiState.name);if(phiState.dob)t=t.replaceAll(PHI_TOKENS.dob,phiState.dob);if(phiState.mrn)t=t.replaceAll(PHI_TOKENS.mrn,phiState.mrn);return t;}
+let docImages=[];let clinImages=[];
+function todayISO(){return new Date().toISOString().slice(0,10);}
+function calculateAge(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const now=new Date();let age=now.getFullYear()-d.getFullYear();if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate()))age--;return age;}
+
+// ---- ONENOTE (direct Graph API via MSAL) ----
+function oneNoteGetCache(){try{return JSON.parse(localStorage.getItem('onenote-cache'))||{};}catch{return {};}}
+function oneNoteSaveCache(c){localStorage.setItem('onenote-cache',JSON.stringify(c));}
+
+async function graphFetch(url,opts={}){
+  const token=await getGraphToken();
+  opts.headers=opts.headers||{};opts.headers['Authorization']='Bearer '+token;
+  const r=await fetch(url,opts);if(!r.ok){const t=await r.text().catch(()=>'');throw new Error('Graph API '+r.status+': '+t.slice(0,200));}return r;
+}
+
+function formatOneNoteTitle(){
+  const now=new Date();const hh=String(now.getHours()).padStart(2,'0');const mm=String(now.getMinutes()).padStart(2,'0');
+  let title=hh+':'+mm;
+  if(phiState.name){const parts=phiState.name.trim().split(/[\s,]+/).filter(Boolean);if(parts.length>=2){if(phiState.name.includes(','))title+=' \u00B7 '+parts[0]+', '+parts.slice(1).join(' ');else title+=' \u00B7 '+parts[parts.length-1]+', '+parts.slice(0,-1).join(' ');}else title+=' \u00B7 '+parts[0];}
+  const age=calculateAge(phiState.dob);if(age!==null)title+=' \u00B7 '+age+'y';
+  return title;
+}
+
+async function oneNoteEnsureSection(sectionName){
+  const cache=oneNoteGetCache();const cacheKey='section:'+sectionName;
+  if(cache[cacheKey]&&cache._date===todayISO())return cache[cacheKey];
+  let nbId=cache.notebookId;
+  if(!nbId){const r=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks?$top=1');const d=await r.json();if(!d.value||!d.value.length)throw new Error('No OneNote notebooks found');nbId=d.value[0].id;cache.notebookId=nbId;}
+  const sr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections');
+  const sd=await sr.json();const existing=(sd.value||[]).find(s=>s.displayName===sectionName);
+  if(existing){cache[cacheKey]=existing.id;cache._date=todayISO();oneNoteSaveCache(cache);return existing.id;}
+  const cr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:sectionName})});
+  const cd=await cr.json();cache[cacheKey]=cd.id;cache._date=todayISO();oneNoteSaveCache(cache);return cd.id;
+}
+
+function pickOneNoteImage(type){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=async()=>{
+    for(const f of inp.files){
+      const reader=new FileReader();
+      await new Promise(res=>{reader.onload=()=>{
+        const b64=reader.result.split(',')[1];
+        const item={base64:b64,mimeType:f.type||'image/jpeg',name:f.name};
+        if(type==='doc')docImages.push(item);else clinImages.push(item);
+        res();};reader.readAsDataURL(f);});
+    }
+    render();
+  };inp.click();
+}
+
+async function oneNoteSend(){
+  setState({phase:'onenote'});
+  try{
+    const note=phiRehydrate(state.noteText)||'';
+    const preauth=phiRehydrate(state.billPreauth)||'';
+    const codes=state.billCodes||'';
+    const dt=todayISO();
+    const sectionName=typeCat(state.nt)+' '+dt;
+    const sectionId=await oneNoteEnsureSection(sectionName);
+    const pageTitle=formatOneNoteTitle();
+    const noteHtml=esc(note).replace(/^([A-Z][A-Z &\/\-]+:)/gm,'</p><p><b>$1</b>').replace(/\n/g,'<br/>');
+    const cptLines=codes?codes.split('\n').filter(l=>l.trim()):[];
+    let cptHtml='';
+    if(cptLines.length){
+      cptHtml='<h2>CPT Codes / RVU</h2><table border="1" style="border-collapse:collapse"><tr><th style="padding:4px 8px">Code</th><th style="padding:4px 8px">RVU</th><th style="padding:4px 8px">Description</th></tr>';
+      cptLines.forEach(l=>{const m=l.match(/(\d{5})/);const rest=l.replace(/\d{5}\s*/,'');if(m){const rvu=RVU_TABLE[parseInt(m[1])]||'';cptHtml+='<tr><td style="padding:4px 8px;font-weight:bold">'+m[1]+'</td><td style="padding:4px 8px">'+rvu+'</td><td style="padding:4px 8px">'+esc(rest)+'</td></tr>';}});
+      cptHtml+='</table>';
+    }
+    const preauthHtml=preauth?'<h2>Pre-Authorization</h2><p>'+esc(preauth).replace(/\n/g,'<br/>')+'</p>':'';
+    let ocrHtml='';
+    if(docImages.length){const ocrTexts=docImages.map(d=>d.ocrText).filter(Boolean);if(ocrTexts.length)ocrHtml='<h2>OCR Document Text</h2><p style="font-family:monospace;font-size:11px;white-space:pre-wrap">'+esc(ocrTexts.join('\n\n---\n\n'))+'</p>';}
+    // Collect images for multipart
+    const allImages=[];let imgIdx=0;let docImgHtml='';let clinImgHtml='';
+    if(docImages.length){docImgHtml='<h2>Documents</h2>';docImages.forEach(d=>{const name='img'+(imgIdx++);allImages.push({name,base64:d.base64,mimeType:d.mimeType});docImgHtml+='<img src="name:'+name+'" alt="document" style="max-width:600px;margin:4px 0" />';});}
+    if(clinImages.length){clinImgHtml='<h2>Clinical Images</h2>';clinImages.forEach(d=>{const name='img'+(imgIdx++);allImages.push({name,base64:d.base64,mimeType:d.mimeType});clinImgHtml+='<img src="name:'+name+'" alt="clinical" style="max-width:600px;margin:4px 0" />';});}
+    let html='<!DOCTYPE html><html><head><title>'+esc(pageTitle)+'</title></head><body>';
+    html+='<h1>'+esc(pageTitle)+'</h1>';
+    html+='<p style="color:gray">'+dt+' \u00B7 '+esc(typeCat(state.nt))+'</p>';
+    html+='<h2>Note</h2><p>'+noteHtml+'</p>';
+    html+=cptHtml+preauthHtml+ocrHtml+docImgHtml+clinImgHtml;
+    html+='</body></html>';
+    const token=await getGraphToken();
+    const url='https://graph.microsoft.com/v1.0/me/onenote/sections/'+sectionId+'/pages';
+    if(allImages.length){
+      // Multipart request with images using Blob parts for binary safety
+      const boundary='OneNoteBoundary'+Date.now();const enc=new TextEncoder();const parts=[];
+      parts.push(enc.encode('--'+boundary+'\r\nContent-Disposition: form-data; name="Presentation"\r\nContent-Type: text/html\r\n\r\n'+html+'\r\n'));
+      for(const img of allImages){const bin=atob(img.base64);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);parts.push(enc.encode('--'+boundary+'\r\nContent-Disposition: form-data; name="'+img.name+'"\r\nContent-Type: '+img.mimeType+'\r\n\r\n'));parts.push(bytes);parts.push(enc.encode('\r\n'));}
+      parts.push(enc.encode('--'+boundary+'--\r\n'));
+      const blob=new Blob(parts);
+      const r=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'multipart/form-data; boundary='+boundary},body:blob});
+      if(!r.ok)throw new Error('OneNote send failed: '+r.status);
+    }else{
+      const r=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'text/html'},body:html});
+      if(!r.ok)throw new Error('OneNote send failed: '+r.status);
+    }
+    setState({phase:'done'});
+    const btn=document.getElementById('oneNoteBtn');if(btn){btn.innerHTML='\u2705 Sent!';btn.style.background='#059669';setTimeout(()=>{if(btn){btn.innerHTML='\uD83D\uDCD3 Send to OneNote';btn.style.background='';}},2000);}
+  }catch(e){
+    setState({err:'OneNote: '+e.message,phase:'done'});
+  }
+}
 
 // ---- PREP SCHEDULE STATE ----
 let prepSchedule=[];
@@ -1463,12 +1600,13 @@ function render(){
     if(!state._phaseStart)state._phaseStart=Date.now();
     else{const elapsed=Date.now()-state._phaseStart;if(elapsed>90000){state.phase="";state._phaseStart=null;}else if(elapsed>30000)_phaseWarn=true;}
   }else{state._phaseStart=null;}
-  const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check..."};
+  const ph={note:"Generating note...",billing:"Analyzing billing...",incorporate:"Incorporating...",addend:"Updating...",workup:"Adding workup...",image:"Analyzing image...",verify:"Verifying billing...",checking:"Running auth check...",onenote:"Sending to OneNote..."};
   let h="";
 
   // HEADER
   const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure (HIPAA)</span>';
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}</div></div><div style="display:flex;gap:6px">`;
+  h+=`<button class="btn" style="background:${msalAccount?'#059669':'#7c3aed'};font-size:10px;padding:6px 10px" onclick="${msalAccount?'setState({showSettings:true})':'msalLogin()'}">${msalAccount?'\u2705 MS':'\uD83D\uDD12 MS Login'}</button>`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;scribeOpen=true;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
   h+=`</div></div>`;
@@ -1489,6 +1627,9 @@ function render(){
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
     h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:12px">`;
+    h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px;margin-top:12px">Microsoft Account (OneNote)</div>`;
+    if(msalAccount){h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:12px;color:#86efac">\u2705 ${esc(msalAccount.username)}</span><button class="btn" style="background:#7f1d1d;padding:4px 10px;font-size:10px" onclick="msalLogout()">Sign Out</button></div>`;}
+    else{h+=`<button class="btn" style="background:#7c3aed;margin-bottom:8px;padding:8px 14px;font-size:12px" onclick="msalLogin()">\uD83D\uDD12 Sign in to Microsoft</button>`;}
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
     h+=`</div>`;
   }
@@ -1603,6 +1744,13 @@ function render(){
       h+=`</div>`;
     }
     h+=`</div>`;
+
+    // ---- PHI CARD (local only) ----
+    h+=`<div class="card" style="border-color:#eab308;margin-bottom:12px"><div class="card-h"><span class="title" style="color:#fef08a">\uD83D\uDD12 Patient ID</span><span style="font-size:9px;font-weight:700;color:#eab308;background:#422006;padding:2px 8px;border-radius:4px">LOCAL ONLY</span></div><div class="card-b" style="padding:10px 14px">`;
+    h+=`<div style="display:flex;gap:8px;margin-bottom:6px"><div style="flex:2"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">Name</div><input class="inp" value="${esc(phiState.name)}" placeholder="Last, First" oninput="phiState.name=this.value" style="font-size:12px"></div><div style="flex:1"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">MRN</div><input class="inp" value="${esc(phiState.mrn)}" placeholder="MRN" oninput="phiState.mrn=this.value" style="font-size:12px"></div></div>`;
+    const _phiAge=calculateAge(phiState.dob);
+    h+=`<div style="display:flex;gap:8px"><div style="flex:1"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">DOB</div><input class="inp" type="date" value="${esc(phiState.dob)}" oninput="phiState.dob=this.value" style="font-size:12px"></div><div style="flex:1;display:flex;align-items:end"><span style="font-size:12px;color:#64748b;padding:10px 0">${_phiAge!==null?_phiAge+'y':''}${phiState.name?' \u00B7 PHI active':''}</span></div></div>`;
+    h+=`</div></div>`;
 
     // ---- UNIFIED ENCOUNTER TYPE SELECTOR ----
     h+=`<div style="margin-bottom:12px">`;
@@ -1798,6 +1946,16 @@ function render(){
       h+=`<button class="big" style="background:linear-gradient(135deg,#b45309,#d97706);margin-top:8px" onclick="verifyBilling()" ${isL?"disabled":""}>🔍 Verify Billing</button>`;
       h+=`<button class="big" style="background:linear-gradient(135deg,#4338ca,#6366f1);margin-top:8px" onclick="rerunBilling()" ${isL?"disabled":""}>🔄 Re-run Billing</button>`;
       h+=`<button id="coderBtn" class="big" style="background:#334155;margin-top:8px" onclick="sendToCoder(state.noteText,state.billRaw)">📧 Copy → Coder</button>`;
+    }
+    // OneNote
+    if(s.noteText&&msalAccount){
+      h+=`<button id="oneNoteBtn" class="big" style="background:linear-gradient(135deg,#7c3aed,#a855f7);margin-top:8px" onclick="oneNoteSend()" ${isL?"disabled":""}>\uD83D\uDCD3 Send to OneNote</button>`;
+      h+=`<div class="card" style="border-color:#7c3aed40;margin-top:8px"><div class="card-h"><span class="title" style="font-size:12px;color:#c4b5fd">\uD83D\uDCCE OneNote Attachments</span></div><div class="card-b" style="padding:10px">`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="pickOneNoteImage('doc')">📄 + Document</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="pickOneNoteImage('clin')">🩺 + Clinical</button></div>`;
+      if(docImages.length)h+=`<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">${docImages.length} document image${docImages.length>1?'s':''}</div>`;
+      if(clinImages.length)h+=`<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">${clinImages.length} clinical image${clinImages.length>1?'s':''}</div>`;
+      if(docImages.length||clinImages.length)h+=`<button style="font-size:10px;color:#64748b;background:none;border:none" onclick="docImages=[];clinImages=[];render()">Clear all</button>`;
+      h+=`</div></div>`;
     }
     if(s._reopenedCase){
       h+=`<button class="big" style="background:linear-gradient(135deg,#059669,#10b981);margin-top:8px" onclick="saveBackToCase()">💾 Save to Case</button>`;
