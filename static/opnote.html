@@ -461,31 +461,30 @@ async function scribeStartRec(){
     const {token,region}=await _getSpeechToken();
     const sc=SpeechSDK.SpeechConfig.fromAuthorizationToken(token,region);
     sc.speechRecognitionLanguage='en-US';
-    sc.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults,'true');
     const ac=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const ct=new SpeechSDK.ConversationTranscriber(sc,ac);
+    const reco=new SpeechSDK.SpeechRecognizer(sc,ac);
     _liveTranscript=[];_liveInterim='';
-    ct.transcribing.connect((s,e)=>{
-      const spk=e.result.speakerId||'';
-      _liveInterim=spk?`[${spk}]: ${e.result.text}`:e.result.text;
-      render();
-    });
-    ct.transcribed.connect((s,e)=>{
+    reco.recognizing=(s,e)=>{
+      if(e.result.reason===SpeechSDK.ResultReason.RecognizingSpeech){
+        _liveInterim=e.result.text;
+        render();
+      }
+    };
+    reco.recognized=(s,e)=>{
       if(e.result.reason===SpeechSDK.ResultReason.RecognizedSpeech){
-        const spk=e.result.speakerId||'Unknown';
-        _liveTranscript.push(`[${spk}]: ${e.result.text}`);
+        _liveTranscript.push(e.result.text);
         _liveInterim='';
         render();
       }
-    });
-    ct.canceled.connect((s,e)=>{
+    };
+    reco.canceled=(s,e)=>{
       if(e.reason===SpeechSDK.CancellationReason.Error){
         scribeToast('Speech error: '+e.errorDetails);
       }
-    });
-    ct.sessionStopped.connect(()=>{});
-    await ct.startTranscribingAsync();
-    _speechRecognizer=ct;
+    };
+    reco.sessionStopped=()=>{};
+    await reco.startContinuousRecognitionAsync();
+    _speechRecognizer=reco;
     scribeRecording=true;scribeStartTime=Date.now();
     scribeTimerInterval=setInterval(()=>render(),1000);
     try{if('wakeLock' in navigator)scribeWakeLock=await navigator.wakeLock.request('screen');}catch{}
@@ -495,7 +494,7 @@ async function scribeStartRec(){
 }
 async function scribeStopRec(){
   if(_speechRecognizer){
-    try{await _speechRecognizer.stopTranscribingAsync();}catch{}
+    try{await _speechRecognizer.stopContinuousRecognitionAsync();}catch{}
     try{_speechRecognizer.close();}catch{}
     _speechRecognizer=null;
   }
