@@ -1060,60 +1060,46 @@ function renderPatientImageUI(pid){
 
 function exportDayDocx(){
   if(!prepSchedule.length){scribeToast('No schedule to export');return;}
-  if(typeof docx==='undefined'){scribeToast('DOCX library loading — try again');return;}
+  if(typeof docx==='undefined'){scribeToast('DOCX library loading - try again');return;}
   try{
-    const date=todayISO();
-    const sections=[];
-    for(let pi=0;pi<prepSchedule.length;pi++){
-      const p=prepSchedule[pi];
-      const children=[];
-      children.push(new docx.Paragraph({heading:docx.HeadingLevel.HEADING_1,children:[new docx.TextRun({text:(p.appointment_time||'')+' — '+(p.patient_name||''),bold:true,size:32})]}));
-      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.visit_type||''),italics:true,size:24,color:'3b82f6'})]}));
-      children.push(new docx.Paragraph({text:''}));
+    var date=todayISO();
+    var sections=[];
+    for(var pi=0;pi<prepSchedule.length;pi++){
+      var p=prepSchedule[pi];
+      var children=[];
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.appointment_time||'')+' - '+(p.patient_name||''),bold:true,size:32})]}));
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.visit_type||''),italics:true,size:24})]}));
+      children.push(new docx.Paragraph({children:[]}));
       if(p.briefing){
-        const lines=(p.briefing||'').split('\n');
-        for(const line of lines){
-          const m=line.match(/^([A-Z][A-Z /&\-]+):\s*(.*)/);
-          if(m){children.push(new docx.Paragraph({spacing:{after:40},children:[new docx.TextRun({text:m[1]+': ',bold:true,size:22}),new docx.TextRun({text:m[2],size:22})]}));}
-          else if(line.trim()){children.push(new docx.Paragraph({spacing:{after:20},children:[new docx.TextRun({text:line,font:'Consolas',size:18})]}));}
+        var lines=(p.briefing||'').split('\n');
+        for(var li=0;li<lines.length;li++){
+          var line=lines[li];
+          var m=line.match(/^([A-Z][A-Z /&\-]+):\s*(.*)/);
+          if(m){children.push(new docx.Paragraph({children:[new docx.TextRun({text:m[1]+': ',bold:true}),new docx.TextRun({text:m[2]})]}));}
+          else if(line.trim()){children.push(new docx.Paragraph({children:[new docx.TextRun({text:line})]}));}
         }
       }else{
-        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No briefing available',italics:true,color:'999999'})]}));
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No briefing available',italics:true})]}));
       }
       if(prepNotes[p.id]){
-        children.push(new docx.Paragraph({text:''}));
-        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'NOTES: ',bold:true,size:22}),new docx.TextRun({text:prepNotes[p.id],size:22})]}));
+        children.push(new docx.Paragraph({children:[]}));
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'NOTES: ',bold:true}),new docx.TextRun({text:prepNotes[p.id]})]}));
       }
-      const imgs=prepImages[p.id]||[];
-      for(const img of imgs){
-        children.push(new docx.Paragraph({text:''}));
-        children.push(new docx.Paragraph({children:[new docx.TextRun({text:(img.category==='reference'?'REFERENCE IMAGE':'NOTE IMAGE (OCR)'),bold:true,size:20})]}));
-        try{
-          const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
-          const w=img.category==='reference'?500:400;
-          const h=img.category==='reference'?375:300;
-          children.push(new docx.Paragraph({children:[new docx.ImageRun({data:buf,transformation:{width:w,height:h}})]}));
-        }catch(ie){}
-        if(img.ocrText){
-          children.push(new docx.Paragraph({children:[new docx.TextRun({text:'OCR Text:',bold:true,size:18})]}));
-          children.push(new docx.Paragraph({children:[new docx.TextRun({text:img.ocrText,font:'Consolas',size:16})]}));
-        }
-      }
-      sections.push({children});
+      sections.push({children:children});
     }
-    const doc=new docx.Document({sections});
+    var doc=new docx.Document({sections:sections});
     docx.Packer.toBlob(doc).then(function(blob){
-      const fname='OpNote-'+date+'.docx';
-      const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
-      if(isMobile&&navigator.canShare){
-        const file=new File([blob],fname,{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-        if(navigator.canShare({files:[file]})){navigator.share({title:'OpNote Schedule',files:[file]});return;}
-      }
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+      var fname='OpNote-'+date+'.docx';
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setTimeout(function(){URL.revokeObjectURL(a.href);},5000);
       scribeToast('Downloaded '+fname);
-    }).catch(function(e){scribeToast('DOCX error: '+e.message);});
-  }catch(e){alert('DOCX error: '+e.message);}
+    }).catch(function(e){alert('DOCX pack error: '+e.message);});
+  }catch(e){alert('DOCX build error: '+e.message);}
 }
 
 function buildNoteHTML(){
