@@ -1320,13 +1320,20 @@ const DEMO_SCHEDULE=[
 ];
 
 async function fetchPrepSchedule(){
-  prepLoading=true;render();
+  prepLoading=true;prepSchedule=[];render();
   try{
     const resp=await authFetch('/prep?date='+prepDate);
     if(resp.ok){const data=await resp.json();if(data.patients&&data.patients.length>0){prepSchedule=data.patients;}}
   }catch(e){}
   try{await loadPrepImages();}catch{}
   prepLoading=false;render();
+}
+
+function clearAllPatients(){
+  if(!confirm('Clear entire schedule for this day?'))return;
+  prepSchedule=[];prepCompleted={};prepExpanded={};prepNotes={};
+  syncPrepToServer([]);
+  render();
 }
 
 function loadDemoSchedule(){prepSchedule=[...DEMO_SCHEDULE];prepCompleted={};prepExpanded={};activePatient=null;render();}
@@ -2033,7 +2040,7 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="exportDayDocx()">DOCX</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="exportDayDocx()">DOCX</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button><button class="btn" style="background:#991b1b;flex:1;padding:8px;font-size:11px" onclick="clearAllPatients()">Clear</button></div>`;
       }
       // Paste schedule modal
       if(prepPasteModal){
