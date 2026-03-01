@@ -225,7 +225,7 @@ def set_pin_hash(pin_hash: str):
 # ── Rate limiting (in-memory) ───────────────────────────────────────────────
 _rate_failures: dict[str, list[float]] = {}
 RATE_WINDOW = 300  # 5 minutes
-RATE_MAX_FAILURES = 5
+RATE_MAX_FAILURES = 50
 
 
 def _check_rate_limit(client_ip: str) -> bool:
