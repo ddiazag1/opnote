@@ -715,7 +715,6 @@ async def get_prep(date: str = ""):
         from datetime import date as dt
         date = dt.today().isoformat()
     patients = load_prep_by_date(date)
-    patients = [_redact_prep(p, i + 1) for i, p in enumerate(patients)]
     return {"date": date, "patients": patients}
 
 
@@ -723,6 +722,15 @@ async def get_prep(date: str = ""):
 async def post_prep(request: Request):
     body = await request.json()
     date_str = body.get("date")
+    # Bulk save: {date, patients: [...]}
+    patients = body.get("patients")
+    if patients:
+        for p in patients:
+            pid = p.get("id") or uuid.uuid4().hex[:8]
+            p["id"] = pid
+            store_prep(date_str, pid, p)
+        return {"ok": True, "count": len(patients)}
+    # Single save: {date, patient: {...}}
     patient = body.get("patient", {})
     pid = patient.get("id") or uuid.uuid4().hex[:8]
     patient["id"] = pid

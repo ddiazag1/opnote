@@ -1182,10 +1182,18 @@ function parseScheduleText(text){
   if(patients.length){
     prepSchedule=patients;
     prepPasteModal=false;prepPasteText="";ocrProgress="";render();
-    scribeToast(patients.length+' patients parsed (on-device, no data sent)');
+    scribeToast(patients.length+' patients parsed — syncing...');
+    syncPrepToServer(patients);
   }else{
     scribeToast('No patients found. Try adjusting the text or add manually.');
   }
+}
+
+async function syncPrepToServer(patients){
+  try{
+    const dt=new Date().toISOString().slice(0,10);
+    await authFetch('/prep',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:dt,patients})});
+  }catch(e){console.warn('Prep sync failed:',e);}
 }
 
 async function parseScheduleAI(text){
@@ -1195,15 +1203,18 @@ async function parseScheduleAI(text){
     const data=await resp.json();
     prepSchedule=(data.patients||[]).map((p,i)=>({...p,id:'ai_'+i,briefing:'',agent_status:'none'}));
     prepPasteModal=false;prepPasteText="";ocrProgress="";render();
-    scribeToast(prepSchedule.length+' patients parsed via AI (names redacted server-side)');
+    scribeToast(prepSchedule.length+' patients parsed via AI');
+    syncPrepToServer(prepSchedule);
   }catch(e){scribeToast('AI parse failed: '+e.message);}
 }
 
 function addManualPatient(name,time,type){
   const id='manual_'+Date.now().toString(36);
   const isSurgery=time<'08:00';
-  prepSchedule.push({id,patient_name:name,appointment_time:time,is_surgery:isSurgery,visit_type:type,briefing:'',agent_status:'none'});
+  const p={id,patient_name:name,appointment_time:time,is_surgery:isSurgery,visit_type:type,briefing:'',agent_status:'none'};
+  prepSchedule.push(p);
   prepAddForm=false;prepAddName="";prepAddTime="08:00";prepAddType="Follow-up";render();
+  syncPrepToServer([p]);
 }
 
 function scanSchedule(){
