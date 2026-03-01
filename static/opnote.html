@@ -489,7 +489,7 @@ async function scribeStartRec(){
     try{if('wakeLock' in navigator)scribeWakeLock=await navigator.wakeLock.request('screen');}catch{}
     const sa=document.getElementById('scribeSilentAudio');if(sa)sa.play().catch(()=>{});
     render();
-  }catch(err){scribeToast('Microphone access denied: '+err.message);}
+  }catch(err){scribeToast('Recording error: '+err.message);console.error('scribeStartRec error:',err);}
 }
 async function scribeStopRec(){
   if(_speechRecognizer){
