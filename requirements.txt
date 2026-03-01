@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+azure-cognitiveservices-speech
+azure-data-tables
+openai
+python-dotenv
+python-multipart
+aiofiles
+pydub
+static-ffmpeg
