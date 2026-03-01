@@ -1133,14 +1133,70 @@ function nextPatient(){
   }
 }
 
-async function parseScheduleText(text){
+function parseScheduleLocal(text){
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l.length>3);
+  const patients=[];
+  const timeRx=/\b(\d{1,2}):(\d{2})\b/;
+  const surgeryKw=/\b(surgery|acdf|lami|discectomy|fusion|cranio|craniotomy|decompression|stimulator|scs|revision|explor|biopsy|injection|block)\b/i;
+  const typeKw=/\b(new\s*pat|new\s*pt|consult|post[\s-]*op|follow[\s-]*up|f[\s/]u|established|return|recheck)\b/i;
+  for(const line of lines){
+    const tm=line.match(timeRx);
+    if(!tm)continue;
+    const hh=tm[1].padStart(2,'0');const mm=tm[2];
+    const timeStr=hh+':'+mm;
+    // strip time and surrounding separators
+    let rest=line.replace(timeRx,'').replace(/^[\s\-–—|:,]+/,'').replace(/[\s\-–—|:,]+$/,'').trim();
+    if(!rest||rest.length<2)continue;
+    // strip check-in/status columns (common EMR patterns)
+    rest=rest.replace(/^\s*(CI|CO|NS|Checked\s*In|Arrived|Roomed|Check\s*In|Start|Check\s*Out)\s*/gi,'').trim();
+    // try to split name from type/procedure
+    let name=rest,visitType='';
+    // "Last, First - Type" or "Last, First | Type"
+    const sepMatch=rest.match(/^(.+?)\s*[\-–—|]+\s*(.+)$/);
+    if(sepMatch){name=sepMatch[1].trim();visitType=sepMatch[2].trim();}
+    // "Last, First   Type" (multiple spaces)
+    else{const spMatch=rest.match(/^(.+?)\s{3,}(.+)$/);if(spMatch){name=spMatch[1].trim();visitType=spMatch[2].trim();}}
+    // "Last, First\tType" (tab separated)
+    if(!visitType){const tabMatch=rest.match(/^(.+?)\t+(.+)$/);if(tabMatch){name=tabMatch[1].trim();visitType=tabMatch[2].trim();}}
+    // detect surgery by time or keywords
+    const isSurgery=parseInt(hh)<8||surgeryKw.test(visitType)||surgeryKw.test(name);
+    // classify visit type
+    let vt='Follow-up';
+    if(isSurgery)vt='OpNote';
+    else if(typeKw.test(visitType)||typeKw.test(rest)){
+      const full=(visitType+' '+rest).toLowerCase();
+      if(/new\s*pat|new\s*pt/i.test(full))vt='New Patient';
+      else if(/post[\s-]*op/i.test(full))vt='Post-Op';
+      else if(/consult/i.test(full))vt='Consult';
+    }
+    // clean up name — remove age, trailing numbers, MRN-like patterns
+    name=name.replace(/\b\d{5,}\b/g,'').replace(/\bage?\s*:?\s*\d+\b/gi,'').replace(/\b\d{1,3}\s*[yY]\b/,'').replace(/\s+/g,' ').trim();
+    if(!name||name.length<2)continue;
+    patients.push({id:'local_'+patients.length,patient_name:name,appointment_time:timeStr,is_surgery:isSurgery,visit_type:vt,briefing:'',agent_status:'none'});
+  }
+  return patients;
+}
+
+function parseScheduleText(text){
+  const patients=parseScheduleLocal(text);
+  if(patients.length){
+    prepSchedule=patients;
+    prepPasteModal=false;prepPasteText="";ocrProgress="";render();
+    scribeToast(patients.length+' patients parsed (on-device, no data sent)');
+  }else{
+    scribeToast('No patients found. Try adjusting the text or add manually.');
+  }
+}
+
+async function parseScheduleAI(text){
   try{
     const resp=await authFetch('/prep/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     if(!resp.ok)throw new Error('Parse failed');
     const data=await resp.json();
-    prepSchedule=(data.patients||[]).map((p,i)=>({...p,id:'manual_'+i,briefing:'',agent_status:'none'}));
-    prepPasteModal=false;prepPasteText="";render();
-  }catch(e){alert('Failed to parse schedule: '+e.message);}
+    prepSchedule=(data.patients||[]).map((p,i)=>({...p,id:'ai_'+i,briefing:'',agent_status:'none'}));
+    prepPasteModal=false;prepPasteText="";ocrProgress="";render();
+    scribeToast(prepSchedule.length+' patients parsed via AI (names redacted server-side)');
+  }catch(e){scribeToast('AI parse failed: '+e.message);}
 }
 
 function addManualPatient(name,time,type){
@@ -1742,7 +1798,8 @@ function render(){
         h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:#60a5fa">Schedule Text</span><button class="btn" style="background:#7c3aed;padding:4px 10px;font-size:10px" onclick="scanSchedule()">📷 Scan Photo</button></div>`;
         if(ocrProgress)h+=`<div style="font-size:11px;color:#a78bfa;margin-bottom:6px">${esc(ocrProgress)}</div>`;
         h+=`<textarea class="ta" rows="6" placeholder="Paste schedule text or scan a photo..." style="font-size:12px;margin-bottom:8px" oninput="prepPasteText=this.value">${esc(prepPasteText)}</textarea>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#2563eb;flex:1;padding:10px;font-size:12px" onclick="parseScheduleText(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>Parse</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepPasteModal=false;ocrProgress='';render()">Cancel</button></div></div>`;
+        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#2563eb;flex:1;padding:10px;font-size:12px" onclick="parseScheduleText(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>Parse (Local)</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="parseScheduleAI(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>AI Parse</button><button class="btn" style="background:#334155;padding:10px;font-size:12px" onclick="prepPasteModal=false;ocrProgress='';render()">✕</button></div>`;
+        h+=`<div style="font-size:9px;color:#475569;margin-top:6px">Local: names stay on device \u00B7 AI: names redacted server-side</div></div>`;
       }
       // Add patient form
       if(prepAddForm){
