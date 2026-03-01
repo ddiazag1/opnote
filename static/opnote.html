@@ -103,6 +103,7 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js"></script>
 </head>
 <body>
 <div id="app" class="w"></div>
@@ -111,7 +112,7 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 "use strict";
 // ---- CONFIG ----
 let serverReachable=false;
-(async function(){try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
+(async function(){try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{await loadPrepImages();}catch{}try{render();}catch{}})();
 setInterval(()=>{if(serverReachable&&!_syncing)syncCases();},30000);
 
 // ---- AUTH (Google Sign-In) ----
@@ -144,6 +145,14 @@ async function saveAudioRec(rec){const db=await openAudioDB();return new Promise
 async function getAllAudioRecs(){const db=await openAudioDB();return new Promise((res,rej)=>{const tx=db.transaction(AUDIO_STORE,'readonly');const req=tx.objectStore(AUDIO_STORE).getAll();req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});}
 async function deleteAudioRec(id){const db=await openAudioDB();return new Promise((res,rej)=>{const tx=db.transaction(AUDIO_STORE,'readwrite');tx.objectStore(AUDIO_STORE).delete(id);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 let savedAudioRecs=[];let _currentRecId=null;let _autoProcessAfterSave=false;let _pendingAudioDeleteId=null;
+
+// ---- INDEXEDDB PATIENT IMAGES ----
+const PIMG_DB='opnote-patient-images';const PIMG_STORE='images';const PIMG_VER=1;
+function openPatientImgDB(){return new Promise((res,rej)=>{const req=indexedDB.open(PIMG_DB,PIMG_VER);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(PIMG_STORE)){const st=db.createObjectStore(PIMG_STORE,{keyPath:'id'});st.createIndex('patientId','patientId',{unique:false});st.createIndex('datePatient',['date','patientId'],{unique:false});}};req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});}
+async function savePatientImage(img){const db=await openPatientImgDB();return new Promise((res,rej)=>{const tx=db.transaction(PIMG_STORE,'readwrite');tx.objectStore(PIMG_STORE).put(img);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+async function getPatientImages(patientId,date){const db=await openPatientImgDB();return new Promise((res,rej)=>{const tx=db.transaction(PIMG_STORE,'readonly');const idx=tx.objectStore(PIMG_STORE).index('datePatient');const req=idx.getAll([date,patientId]);req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});}
+async function getAllDateImages(date){const db=await openPatientImgDB();return new Promise((res,rej)=>{const tx=db.transaction(PIMG_STORE,'readonly');const req=tx.objectStore(PIMG_STORE).getAll();req.onsuccess=()=>res((req.result||[]).filter(i=>i.date===date));req.onerror=()=>rej(req.error);});}
+async function deletePatientImage(id){const db=await openPatientImgDB();return new Promise((res,rej)=>{const tx=db.transaction(PIMG_STORE,'readwrite');tx.objectStore(PIMG_STORE).delete(id);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
 // ---- RVU TABLE (2025 Medicare PFS) ----
 const RVU_TABLE={22551:20.50,22552:6.51,22845:5.21,22600:22.35,22610:22.35,22612:25.08,22614:6.00,22633:25.52,22634:6.44,22853:5.54,22854:3.92,22840:8.48,22842:11.88,22843:14.72,22844:16.20,63047:13.15,63048:3.22,63030:10.45,63035:3.22,63042:12.00,63052:14.50,63053:3.50,63056:13.50,22513:10.45,22514:10.45,63081:23.50,63082:5.50,22554:18.50,61781:5.31,61782:5.31,61783:5.31,20930:2.97,20931:3.80,20936:3.37,20937:5.50,20938:6.20,22206:30.00,22207:30.00,22210:15.00,22212:15.00,22214:15.00,22852:12.50,22855:13.00,20251:2.40,63050:15.50,63051:3.80,69990:3.00,22595:24.00,22548:18.50,99202:1.22,99203:1.82,99204:2.60,99205:3.50,99211:0.57,99212:0.93,99213:1.30,99214:1.92,99215:2.80,99252:1.55,99253:2.11,99254:3.18,99255:3.86,99291:10.00,99292:5.00};
@@ -1019,6 +1028,100 @@ function pickOneNoteImage(type){
   };inp.click();
 }
 
+function renderPatientImageUI(pid){
+  const imgs=prepImages[pid]||[];
+  const refs=imgs.filter(i=>i.category==='reference');
+  const notes=imgs.filter(i=>i.category==='note');
+  let h='<div style="display:flex;gap:6px;margin-bottom:8px">';
+  h+=`<button class="btn" style="background:#334155;flex:1;padding:6px 8px;font-size:11px" onclick="pickPatientImage('${pid}','reference')">+ Reference Image</button>`;
+  h+=`<button class="btn" style="background:#334155;flex:1;padding:6px 8px;font-size:11px" onclick="pickPatientImage('${pid}','note')">+ Note (OCR)</button>`;
+  h+='</div>';
+  if(refs.length){
+    h+='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">';
+    refs.forEach(img=>{
+      h+=`<div style="position:relative;width:56px;height:56px"><img src="data:${img.mimeType};base64,${img.base64}" style="width:56px;height:56px;object-fit:cover;border-radius:4px;border:1px solid #1e293b"/>`;
+      h+=`<button onclick="removePatientImage('${pid}','${img.id}')" style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:#dc2626;color:#fff;border:none;font-size:10px;line-height:16px;padding:0;cursor:pointer">x</button></div>`;
+    });
+    h+='</div>';
+  }
+  if(notes.length){
+    notes.forEach(img=>{
+      h+='<div style="background:#020617;border:1px solid #1e293b;border-radius:6px;padding:6px;margin-bottom:4px;display:flex;gap:6px;align-items:flex-start">';
+      h+=`<img src="data:${img.mimeType};base64,${img.base64}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0"/>`;
+      h+='<div style="flex:1;min-width:0">';
+      h+=`<div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((img.ocrText||'').slice(0,200))}</div>`;
+      h+=`<div style="display:flex;gap:4px;margin-top:2px"><button onclick="reOCRPatientImage('${pid}','${img.id}')" style="font-size:9px;color:#60a5fa;background:none;border:none;cursor:pointer;padding:0">Re-OCR</button>`;
+      h+=`<button onclick="removePatientImage('${pid}','${img.id}')" style="font-size:9px;color:#f87171;background:none;border:none;cursor:pointer;padding:0">Delete</button></div>`;
+      h+='</div></div>';
+    });
+  }
+  return h;
+}
+
+async function exportDayDocx(){
+  if(!prepSchedule.length){scribeToast('No schedule to export');return;}
+  try{
+    const{Document,Packer,Paragraph,TextRun,ImageRun,HeadingLevel,AlignmentType,Table,TableRow,TableCell,WidthType,BorderStyle}=docx;
+    const date=todayISO();
+    const children=[];
+    children.push(new Paragraph({heading:HeadingLevel.HEADING_1,children:[new TextRun({text:'Daily Schedule & Briefings',bold:true})]}));
+    children.push(new Paragraph({children:[new TextRun({text:date+' \u2022 '+prepSchedule.length+' patient'+(prepSchedule.length>1?'s':''),color:'666666'})]}));
+    children.push(new Paragraph({text:''}));
+    for(const p of prepSchedule){
+      children.push(new Paragraph({heading:HeadingLevel.HEADING_2,children:[new TextRun({text:p.appointment_time+' \u2014 '+p.patient_name,bold:true})]}));
+      children.push(new Paragraph({children:[new TextRun({text:'Visit Type: '+p.visit_type,italics:true,color:'3b82f6'})]}));
+      if(p.briefing){
+        const secs=parseBriefingSections(p.briefing);
+        for(const[key,val] of Object.entries(secs)){
+          children.push(new Paragraph({children:[new TextRun({text:key+': ',bold:true}),new TextRun({text:val})]}));
+        }
+        children.push(new Paragraph({text:''}));
+        children.push(new Paragraph({children:[new TextRun({text:p.briefing,font:'Consolas',size:18})]}));
+      }
+      if(prepNotes[p.id]){
+        children.push(new Paragraph({children:[new TextRun({text:'Notes: ',bold:true}),new TextRun({text:prepNotes[p.id]})]}));
+      }
+      const imgs=prepImages[p.id]||[];
+      const refs=imgs.filter(i=>i.category==='reference');
+      const notes=imgs.filter(i=>i.category==='note');
+      if(refs.length){
+        children.push(new Paragraph({children:[new TextRun({text:'Reference Images:',bold:true})]}));
+        for(const img of refs){
+          try{
+            const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
+            children.push(new Paragraph({children:[new ImageRun({data:buf,transformation:{width:500,height:375},type:img.mimeType==='image/png'?'png':'jpg'})]}));
+          }catch(e){}
+        }
+      }
+      if(notes.length){
+        children.push(new Paragraph({children:[new TextRun({text:'Note Images (OCR):',bold:true})]}));
+        for(const img of notes){
+          try{
+            const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
+            children.push(new Paragraph({children:[new ImageRun({data:buf,transformation:{width:400,height:300},type:img.mimeType==='image/png'?'png':'jpg'})]}));
+          }catch(e){}
+          if(img.ocrText){
+            children.push(new Paragraph({children:[new TextRun({text:img.ocrText,font:'Consolas',size:18})]}));
+          }
+        }
+      }
+      children.push(new Paragraph({text:''}));
+      children.push(new Paragraph({text:'_______________________________________________'}));
+      children.push(new Paragraph({text:''}));
+    }
+    const doc=new Document({sections:[{children}]});
+    const blob=await Packer.toBlob(doc);
+    const fname='OpNote-Schedule-'+date+'.docx';
+    const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
+    if(isMobile&&navigator.canShare){
+      const file=new File([blob],fname,{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+      if(navigator.canShare({files:[file]})){await navigator.share({title:'OpNote Schedule',files:[file]});return;}
+    }
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
+    scribeToast('Downloaded '+fname);
+  }catch(e){scribeToast('DOCX error: '+e.message);}
+}
+
 function buildNoteHTML(){
   const note=formatEMR(phiRehydrate(state.noteText))||'';
   const preauth=formatEMR(phiRehydrate(state.billPreauth))||'';
@@ -1057,7 +1160,7 @@ async function shareNote(){
     const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
     if(isMobile&&navigator.canShare&&navigator.canShare({files:[file]})){
       await navigator.share({title:pageTitle,files:[file]});
-      scribeToast('Shared! Save to OneDrive for HIPAA storage.');
+      scribeToast('Shared!');
     }else{
       const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=fileName;a.click();URL.revokeObjectURL(a.href);
       scribeToast('Downloaded '+fileName);
@@ -1077,6 +1180,56 @@ let prepCompleted={};
 let activePatient=null;
 let prepPanelOpen=true;
 let prepNotes={};
+let prepImages={};
+async function loadPrepImages(){
+  try{
+    const date=todayISO();
+    const all=await getAllDateImages(date);
+    prepImages={};
+    all.forEach(img=>{if(!prepImages[img.patientId])prepImages[img.patientId]=[];prepImages[img.patientId].push(img);});
+  }catch(e){console.warn('loadPrepImages error:',e);}
+}
+function pickPatientImage(patientId,category){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=async()=>{
+    for(const f of inp.files){
+      const reader=new FileReader();
+      const b64=await new Promise((res,rej)=>{reader.onload=()=>res(reader.result.split(',')[1]);reader.onerror=rej;reader.readAsDataURL(f);});
+      const img={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),patientId,date:todayISO(),category,base64:b64,mimeType:f.type||'image/jpeg',name:f.name,ocrText:'',ts:Date.now()};
+      if(category==='note'){
+        try{
+          const blob=new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:img.mimeType});
+          const file=new File([blob],f.name,{type:img.mimeType});
+          img.ocrText=await ocrImage(file);
+        }catch(e){
+          try{const result=await Tesseract.recognize('data:'+img.mimeType+';base64,'+b64,'eng');img.ocrText=result.data.text||'';}catch(e2){img.ocrText='[OCR failed]';}
+        }
+      }
+      await savePatientImage(img);
+      if(!prepImages[patientId])prepImages[patientId]=[];
+      prepImages[patientId].push(img);
+    }
+    render();
+  };inp.click();
+}
+async function removePatientImage(patientId,imgId){
+  await deletePatientImage(imgId);
+  if(prepImages[patientId])prepImages[patientId]=prepImages[patientId].filter(i=>i.id!==imgId);
+  render();
+}
+async function reOCRPatientImage(patientId,imgId){
+  const imgs=prepImages[patientId]||[];
+  const img=imgs.find(i=>i.id===imgId);if(!img)return;
+  try{
+    const blob=new Blob([Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0))],{type:img.mimeType});
+    const file=new File([blob],img.name||'image',{type:img.mimeType});
+    img.ocrText=await ocrImage(file);
+  }catch(e){
+    try{const result=await Tesseract.recognize('data:'+img.mimeType+';base64,'+img.base64,'eng');img.ocrText=result.data.text||'';}catch(e2){img.ocrText='[OCR failed]';}
+  }
+  await savePatientImage(img);
+  render();
+}
 let prepPasteModal=false;
 let prepPasteText="";
 let ocrProgress="";
@@ -1100,6 +1253,7 @@ async function fetchPrepSchedule(){
     const resp=await authFetch('/prep?date='+today);
     if(resp.ok){const data=await resp.json();if(data.patients&&data.patients.length>0){prepSchedule=data.patients;}}
   }catch(e){}
+  try{await loadPrepImages();}catch{}
   prepLoading=false;render();
 }
 
@@ -1107,6 +1261,9 @@ function loadDemoSchedule(){prepSchedule=[...DEMO_SCHEDULE];prepCompleted={};pre
 
 function startEncounterFromPrep(patient){
   activePatient=patient;
+  const pImgs=prepImages[patient.id]||[];
+  clinImages=pImgs.filter(i=>i.category==='reference').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name}));
+  docImages=pImgs.filter(i=>i.category==='note').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name,ocrText:i.ocrText||''}));
   if(patient.is_surgery){setEncounterType('OpNote');}
   else{
     const vtMap={'New Patient':'Clinic - New Patient','Post-Op':'Clinic - Post-Op','Follow-up':'Clinic - Established','Consult':'Consult'};
@@ -1660,7 +1817,7 @@ function render(){
     let h=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center">`;
     h+=`<div style="font-size:32px;margin-bottom:12px">🔒</div>`;
     h+=`<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:4px">OpNote Intelligence</div>`;
-    h+=`<div style="font-size:12px;color:#475569;margin-bottom:24px">v10.0 · Azure (HIPAA)</div>`;
+    h+=`<div style="font-size:12px;color:#475569;margin-bottom:24px">v10.0 · Azure</div>`;
     h+=`<div id="google-signin-btn" style="margin-bottom:16px"></div>`;
     if(accessPinErr)h+=`<div style="color:#fca5a5;font-size:13px;margin-top:12px;font-weight:600">${esc(accessPinErr)}</div>`;
     h+=`</div>`;
@@ -1681,7 +1838,7 @@ function render(){
   let h="";
 
   // HEADER
-  const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure (HIPAA)</span>';
+  const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure</span>';
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}</div></div><div style="display:flex;gap:6px">`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;scribeOpen=true;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
@@ -1698,7 +1855,7 @@ function render(){
   if(s.showSettings){
     h+=`<div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:14px;margin-bottom:12px">`;
     h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:10px">SETTINGS</div>`;
-    h+=`<div style="font-size:11px;color:${serverReachable?"#86efac":"#fca5a5"};margin-bottom:10px">${serverReachable?"✅ Server connected · 🔒 Azure (HIPAA)":"⚠️ Server unreachable"}</div>`;
+    h+=`<div style="font-size:11px;color:${serverReachable?"#86efac":"#fca5a5"};margin-bottom:10px">${serverReachable?"✅ Server connected · 🔒 Azure":"⚠️ Server unreachable"}</div>`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Surgeon Name</div>`;
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
@@ -1755,6 +1912,7 @@ function render(){
               }else{
                 h+=`<div style="font-size:12px;color:#475569;padding:8px;text-align:center">No briefing available</div>`;
               }
+              h+=renderPatientImageUI(p.id);
               h+=`<textarea class="ta" rows="2" placeholder="Add note..." style="font-size:12px;margin-bottom:6px" oninput="prepNotes['${p.id}']=this.value">${esc(prepNotes[p.id]||'')}</textarea>`;
               h+=`<button class="btn" style="width:100%;background:linear-gradient(135deg,#991b1b,#dc2626);padding:10px;font-size:13px;font-weight:700" onclick="startEncounterFromPrep(prepSchedule.find(x=>x.id==='${p.id}'))">Start Encounter</button>`;
               h+=`</div>`;
@@ -1787,6 +1945,7 @@ function render(){
               }else{
                 h+=`<div style="font-size:12px;color:#475569;padding:8px;text-align:center">No briefing available</div>`;
               }
+              h+=renderPatientImageUI(p.id);
               h+=`<textarea class="ta" rows="2" placeholder="Add note..." style="font-size:12px;margin-bottom:6px" oninput="prepNotes['${p.id}']=this.value">${esc(prepNotes[p.id]||'')}</textarea>`;
               h+=`<button class="btn" style="width:100%;background:linear-gradient(135deg,#1d4ed8,#2563eb);padding:10px;font-size:13px;font-weight:700" onclick="startEncounterFromPrep(prepSchedule.find(x=>x.id==='${p.id}'))">Start Encounter</button>`;
               h+=`</div>`;
@@ -1795,7 +1954,7 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="exportDayDocx()">DOCX</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
       }
       // Paste schedule modal
       if(prepPasteModal){
@@ -2105,7 +2264,7 @@ function render(){
     if(isL){h+=`<div class="ld">${ph[s.phase]||"Processing..."}`;if(_phaseWarn)h+=`<div style="margin-top:6px;font-size:11px;color:#f59e0b">Taking longer than expected... <button style="background:#7f1d1d;color:#fca5a5;border:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="state.phase='';state._phaseStart=null;render()">Cancel</button></div>`;h+=`</div>`;}
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
     // Actions
-    h+=`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="background:linear-gradient(135deg,#b45309,#d97706);flex:1" onclick="reopenCase('${c.id}',${ni})">🔓 Full Edit</button><button class="btn" style="background:#1e3a5f;flex:1" onclick="setState({view:'input',text:'',linkedTo:'${c.id}',nt:'progress'})">+ Linked</button><button class="btn" style="background:#7f1d1d" onclick="if(confirm('Delete?'))deleteCase('${c.id}')">🗑️</button></div>`;
+    h+=`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="background:linear-gradient(135deg,#b45309,#d97706);flex:1" onclick="reopenCase('${c.id}',${ni})">🔓 Full Edit</button><button class="btn" style="background:#1e3a5f;flex:1" onclick="setState({view:'input',text:'',linkedTo:'${c.id}',nt:'progress'})">+ Linked</button><button class="btn" style="background:#7f1d1d" onclick="if(confirm('Delete encounter?'))deleteCase('${c.id}')">🗑️</button></div>`;
   }
 
   // ---- STATS VIEW ----
