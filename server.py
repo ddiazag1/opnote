@@ -7,7 +7,7 @@ GET /encounter/{id}: returns stored encounter JSON (Azure Table Storage)
 GET /health: health check
 """
 
-import os, json, tempfile, threading, logging, uuid, base64, time
+import os, json, tempfile, threading, logging, uuid, base64, time, secrets
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
@@ -222,6 +222,65 @@ def set_pin_hash(pin_hash: str):
         _config_mem["pin_hash"] = pin_hash
 
 
+# ── Session storage (Google auth) ────────────────────────────────────────────
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+ALLOWED_EMAIL = os.getenv("ALLOWED_EMAIL", "")
+SESSION_TTL = 30 * 24 * 3600  # 30 days
+
+
+def create_session(email: str) -> str:
+    """Create a session token stored in opnoteconfig table, returns the token."""
+    token = secrets.token_hex(32)  # 64-char hex
+    tbl = get_config_table()
+    entity = {
+        "PartitionKey": "session",
+        "RowKey": token,
+        "data": json.dumps({"email": email, "created": time.time(), "expires": time.time() + SESSION_TTL}),
+    }
+    if tbl:
+        tbl.upsert_entity(entity)
+    else:
+        _config_mem[f"session_{token}"] = entity
+    return token
+
+
+def validate_session(token: str) -> str | None:
+    """Return email if session is valid, None otherwise."""
+    if not token:
+        return None
+    tbl = get_config_table()
+    if tbl:
+        try:
+            entity = tbl.get_entity("session", token)
+            data = json.loads(entity["data"])
+            if data.get("expires", 0) > time.time():
+                return data.get("email")
+            # Expired — clean up
+            tbl.delete_entity("session", token)
+        except Exception:
+            return None
+    else:
+        entity = _config_mem.get(f"session_{token}")
+        if entity:
+            data = json.loads(entity["data"])
+            if data.get("expires", 0) > time.time():
+                return data.get("email")
+            del _config_mem[f"session_{token}"]
+    return None
+
+
+def delete_session(token: str):
+    """Remove a session token."""
+    tbl = get_config_table()
+    if tbl:
+        try:
+            tbl.delete_entity("session", token)
+        except Exception:
+            pass
+    else:
+        _config_mem.pop(f"session_{token}", None)
+
+
 # ── Rate limiting (in-memory) ───────────────────────────────────────────────
 _rate_failures: dict[str, list[float]] = {}
 RATE_WINDOW = 300  # 5 minutes
@@ -246,7 +305,7 @@ def _record_failure(client_ip: str):
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
-PUBLIC_PATHS = {"/health", "/", "/opnote", "/auth/status", "/auth/register"}
+PUBLIC_PATHS = {"/health", "/", "/opnote", "/auth/status", "/auth/register", "/auth/google", "/auth/logout"}
 
 
 class PinAuthMiddleware(BaseHTTPMiddleware):
@@ -254,11 +313,6 @@ class PinAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         # Public paths — no auth needed
         if path in PUBLIC_PATHS or path.startswith("/static"):
-            return await call_next(request)
-
-        # Check if a PIN is registered; if not, allow all (first-run)
-        stored_hash = get_pin_hash()
-        if not stored_hash:
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -276,11 +330,20 @@ class PinAuthMiddleware(BaseHTTPMiddleware):
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
         if not token:
-            # Cookie fallback for sendBeacon
             cookies = request.cookies
             token = cookies.get("__opnote_token")
 
-        if token == stored_hash:
+        # 1. Try Google session token
+        if token and validate_session(token):
+            return await call_next(request)
+
+        # 2. Fallback: PIN hash (backward compat during transition)
+        stored_hash = get_pin_hash()
+        if stored_hash and token == stored_hash:
+            return await call_next(request)
+
+        # 3. No auth configured at all — first-run open access
+        if not stored_hash and not GOOGLE_CLIENT_ID:
             return await call_next(request)
 
         # Auth failed
@@ -601,7 +664,10 @@ async def health():
 
 @app.get("/auth/status")
 async def auth_status():
-    return {"registered": get_pin_hash() is not None}
+    return {
+        "registered": get_pin_hash() is not None,
+        "google_client_id": GOOGLE_CLIENT_ID or None,
+    }
 
 
 @app.post("/auth/register")
@@ -613,6 +679,53 @@ async def auth_register(request: Request):
     if get_pin_hash() is not None:
         return JSONResponse({"error": "PIN already registered"}, status_code=409)
     set_pin_hash(pin_hash)
+    return {"ok": True}
+
+
+@app.post("/auth/google")
+async def auth_google(request: Request):
+    """Validate Google ID token and create a session."""
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+
+    if not GOOGLE_CLIENT_ID:
+        return JSONResponse({"error": "Google auth not configured"}, status_code=500)
+
+    body = await request.json()
+    credential = body.get("credential", "")
+    if not credential:
+        return JSONResponse({"error": "Missing credential"}, status_code=400)
+
+    try:
+        idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
+    except ValueError as e:
+        log.warning("Google token verification failed: %s", e)
+        return JSONResponse({"error": "Invalid token"}, status_code=401)
+
+    email = idinfo.get("email", "").lower()
+    if not email:
+        return JSONResponse({"error": "No email in token"}, status_code=401)
+
+    if ALLOWED_EMAIL and email != ALLOWED_EMAIL.lower():
+        log.warning("Unauthorized Google login attempt: %s", email)
+        return JSONResponse({"error": "Unauthorized email"}, status_code=403)
+
+    token = create_session(email)
+    log.info("Google auth success: %s", email)
+    return {"token": token, "email": email}
+
+
+@app.post("/auth/logout")
+async def auth_logout(request: Request):
+    """Delete the session token."""
+    auth_header = request.headers.get("authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    if not token:
+        token = request.cookies.get("__opnote_token")
+    if token:
+        delete_session(token)
     return {"ok": True}
 
 

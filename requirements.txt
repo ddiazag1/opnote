@@ -5,6 +5,8 @@ azure-data-tables
 openai
 python-dotenv
 python-multipart
+google-auth
+requests
 aiofiles
 pydub
 static-ffmpeg

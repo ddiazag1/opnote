@@ -100,6 +100,7 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 .mdm-result{padding:10px 12px;background:linear-gradient(135deg,#0c1a2e,#0f172a);border:1px solid #1e3a5f;border-radius:8px;margin-top:6px;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;color:#60a5fa}
 .mdm-arrow{color:#3b82f6;font-size:16px}
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
@@ -113,16 +114,16 @@ let serverReachable=false;
 (async function(){try{const r=await fetch('/health');serverReachable=r.ok;if(serverReachable){try{await syncCases();}catch{}try{await fetchPrepSchedule();}catch{}}}catch{}try{savedAudioRecs=await getAllAudioRecs();}catch{}try{render();}catch{}})();
 setInterval(()=>{if(serverReachable&&!_syncing)syncCases();},30000);
 
-// ---- ACCESS PIN ----
-let accessLocked=true;let accessPinErr='';
-const ACCESS_PIN_KEY='opnote-access-pin';
-let _authToken=localStorage.getItem(ACCESS_PIN_KEY)||'';
-async function hashPin(p){const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(p));return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('');}
-async function authFetch(url,opts={}){opts.headers=opts.headers||{};if(_authToken)opts.headers['Authorization']='Bearer '+_authToken;const resp=await fetch(url,opts);if(resp.status===401){accessLocked=true;accessPinErr='Session expired';render();throw new Error('Unauthorized');}if(resp.status===429){accessPinErr='Too many attempts. Wait 5 min.';render();throw new Error('Rate limited');}return resp;}
-async function setAccessPin(p,c){if(!/^\d{4}$/.test(p)){accessPinErr='Enter 4 digits';render();return;}if(p!==c){accessPinErr='PINs do not match';render();return;}const h=await hashPin(p);try{const r=await fetch('/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin_hash:h})});if(!r.ok){const d=await r.json();if(r.status===409){accessPinErr='PIN already set on server. Enter existing PIN.';accessLocked=true;render();return;}accessPinErr=d.error||'Server error';render();return;}}catch(e){console.warn('Could not register PIN on server:',e);}localStorage.setItem(ACCESS_PIN_KEY,h);_authToken=h;document.cookie='__opnote_token='+h+';path=/;SameSite=Strict;Secure';accessLocked=false;accessPinErr='';render();if(serverReachable){syncCases().catch(()=>{});fetchPrepSchedule().catch(()=>{});}}
-async function checkAccessPin(p){const h=await hashPin(p);const localHash=localStorage.getItem(ACCESS_PIN_KEY);if(localHash&&h===localHash){_authToken=h;document.cookie='__opnote_token='+h+';path=/;SameSite=Strict;Secure';accessLocked=false;accessPinErr='';try{await fetch('/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin_hash:h})});}catch{}render();if(serverReachable){syncCases().catch(()=>{});fetchPrepSchedule().catch(()=>{});}return;}try{const r=await fetch('/cases',{headers:{'Authorization':'Bearer '+h}});if(r.ok){localStorage.setItem(ACCESS_PIN_KEY,h);_authToken=h;document.cookie='__opnote_token='+h+';path=/;SameSite=Strict;Secure';accessLocked=false;accessPinErr='';render();syncCases().catch(()=>{});fetchPrepSchedule().catch(()=>{});return;}}catch{}accessPinErr='Wrong PIN';render();}
-// Init: check server auth status to determine setup vs unlock
-(async function(){try{const r=await fetch('/auth/status');if(r.ok){const d=await r.json();if(d.registered&&!localStorage.getItem(ACCESS_PIN_KEY)){accessLocked=true;try{render();}catch{}return;}}}catch{}if(!localStorage.getItem(ACCESS_PIN_KEY))accessLocked='setup';else accessLocked=true;try{render();}catch{}})();
+// ---- AUTH (Google Sign-In) ----
+let accessLocked=true;let accessPinErr='';let _googleClientId='';
+const ACCESS_TOKEN_KEY='opnote-session-token';
+let _authToken=localStorage.getItem(ACCESS_TOKEN_KEY)||'';
+async function authFetch(url,opts={}){opts.headers=opts.headers||{};if(_authToken)opts.headers['Authorization']='Bearer '+_authToken;const resp=await fetch(url,opts);if(resp.status===401){accessLocked=true;accessPinErr='Session expired — sign in again';render();throw new Error('Unauthorized');}if(resp.status===429){accessPinErr='Too many attempts. Wait 5 min.';render();throw new Error('Rate limited');}return resp;}
+async function handleGoogleCredential(response){accessPinErr='';try{const r=await fetch('/auth/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:response.credential})});const d=await r.json();if(!r.ok){accessPinErr=d.error==='Unauthorized email'?'This Google account is not authorized':'Sign-in failed: '+(d.error||'Unknown error');render();return;}localStorage.setItem(ACCESS_TOKEN_KEY,d.token);_authToken=d.token;document.cookie='__opnote_token='+d.token+';path=/;SameSite=Strict;Secure';accessLocked=false;accessPinErr='';render();if(serverReachable){syncCases().catch(()=>{});fetchPrepSchedule().catch(()=>{});}}catch(e){accessPinErr='Network error';render();}}
+async function signOut(){try{await authFetch('/auth/logout',{method:'POST'});}catch{}localStorage.removeItem(ACCESS_TOKEN_KEY);_authToken='';document.cookie='__opnote_token=;path=/;SameSite=Strict;Secure;max-age=0';accessLocked=true;accessPinErr='';render();}
+function initGoogleSignIn(){if(!_googleClientId||!window.google?.accounts?.id)return;google.accounts.id.initialize({client_id:_googleClientId,callback:handleGoogleCredential,auto_select:true});google.accounts.id.prompt();}
+// Init: check auth status, validate stored session
+(async function(){try{const r=await fetch('/auth/status');if(r.ok){const d=await r.json();_googleClientId=d.google_client_id||'';if(_authToken){try{const v=await fetch('/cases',{headers:{'Authorization':'Bearer '+_authToken}});if(v.ok){accessLocked=false;try{render();}catch{}return;}}catch{}_authToken='';localStorage.removeItem(ACCESS_TOKEN_KEY);}}}catch{}accessLocked=true;try{render();}catch{};setTimeout(initGoogleSignIn,500);})();
 
 const TODAY=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});
 const SK="opnote-cases";
@@ -1654,25 +1655,17 @@ setInterval(function(){
 function render(){
   const s=state;const app=document.getElementById("app");
 
-  // ACCESS PIN GATE
+  // AUTH GATE (Google Sign-In)
   if(accessLocked){
     let h=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center">`;
     h+=`<div style="font-size:32px;margin-bottom:12px">🔒</div>`;
     h+=`<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:4px">OpNote Intelligence</div>`;
     h+=`<div style="font-size:12px;color:#475569;margin-bottom:24px">v10.0 · Azure (HIPAA)</div>`;
-    if(accessLocked==='setup'){
-      h+=`<div style="font-size:13px;color:#94a3b8;margin-bottom:12px">Set a 4-digit access PIN</div>`;
-      h+=`<input id="access-pin1" type="password" inputmode="numeric" maxlength="4" class="inp" placeholder="New PIN" style="width:200px;text-align:center;font-size:18px;letter-spacing:6px;margin-bottom:8px">`;
-      h+=`<input id="access-pin2" type="password" inputmode="numeric" maxlength="4" class="inp" placeholder="Confirm PIN" style="width:200px;text-align:center;font-size:18px;letter-spacing:6px;margin-bottom:12px" onkeydown="if(event.key==='Enter')setAccessPin(document.getElementById('access-pin1').value,this.value)">`;
-      h+=`<button class="btn" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:12px 32px;font-size:14px;font-weight:700" onclick="setAccessPin(document.getElementById('access-pin1').value,document.getElementById('access-pin2').value)">Set PIN</button>`;
-    }else{
-      h+=`<input id="access-pin" type="password" inputmode="numeric" maxlength="4" class="inp" placeholder="Enter PIN" style="width:200px;text-align:center;font-size:18px;letter-spacing:6px;margin-bottom:12px" onkeydown="if(event.key==='Enter')checkAccessPin(this.value)">`;
-      h+=`<button class="btn" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:12px 32px;font-size:14px;font-weight:700" onclick="checkAccessPin(document.getElementById('access-pin').value)">Unlock</button>`;
-    }
+    h+=`<div id="google-signin-btn" style="margin-bottom:16px"></div>`;
     if(accessPinErr)h+=`<div style="color:#fca5a5;font-size:13px;margin-top:12px;font-weight:600">${esc(accessPinErr)}</div>`;
     h+=`</div>`;
     app.innerHTML=h;
-    setTimeout(()=>{const pi=document.getElementById(accessLocked==='setup'?'access-pin1':'access-pin');if(pi)pi.focus();},50);
+    setTimeout(()=>{if(_googleClientId&&window.google?.accounts?.id){google.accounts.id.renderButton(document.getElementById('google-signin-btn'),{theme:'filled_blue',size:'large',shape:'pill',text:'signin_with',width:250});google.accounts.id.prompt();}else if(!_googleClientId){const el=document.getElementById('google-signin-btn');if(el)el.innerHTML='<div style="color:#475569;font-size:12px">Loading...</div>';}},100);
     return;
   }
 
@@ -1711,6 +1704,7 @@ function render(){
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
     h+=`<input class="inp" value="${esc(s.ce)}" placeholder="coder@practice.com" onchange="state.ce=this.value;lsS('opnote-email',this.value);render()" style="margin-bottom:12px">`;
     h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
+    h+=`<button class="btn" style="background:#991b1b;width:100%;margin-top:12px" onclick="signOut()">Sign Out</button>`;
     h+=`</div>`;
   }
 
