@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cohort">
+<meta name="theme-color" content="#020617">
+<title>Patient Cohort Tracker</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#020617;color:#cbd5e1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
+.w{max-width:640px;margin:0 auto;padding:12px 12px 120px;padding-bottom:max(120px,calc(120px + env(safe-area-inset-bottom)))}
+button,select{cursor:pointer;-webkit-appearance:none}
+textarea,input,select{-webkit-appearance:none;outline:none}
+.btn{padding:6px 14px;border-radius:8px;font-size:11px;font-weight:700;border:none;color:#fff;transition:all .15s;min-height:40px}
+.big{width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:700;border:none;color:#fff;transition:all .15s;min-height:48px}
+.card{border-radius:12px;border:1px solid #1e293b;margin-bottom:12px;overflow:hidden;background:#0c1220}
+.card-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px}
+.card-h .title{font-size:14px;font-weight:700;color:#f1f5f9}
+.card-b{padding:14px}
+.inp{width:100%;padding:10px 12px;border-radius:8px;font-size:13px;background:#020617;border:1px solid #1e293b;color:#e2e8f0;margin-bottom:8px}
+.ta{width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:14px;font-size:14px;font-family:-apple-system,sans-serif;color:#e2e8f0;resize:none;line-height:1.6}
+.sel{width:100%;padding:10px 12px;border-radius:8px;font-size:13px;background:#020617;border:1px solid #1e293b;color:#e2e8f0;margin-bottom:8px}
+.lbl{font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.tag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px 4px 2px 0;cursor:pointer}
+.tag.on{background:#1d4ed8;color:#fff}.tag.off{background:#1e293b;color:#64748b}
+.fab{position:fixed;bottom:max(24px,calc(24px + env(safe-area-inset-bottom)));right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:28px;font-weight:400;border:none;box-shadow:0 4px 20px #0008;display:flex;align-items:center;justify-content:center;z-index:100}
+.fab:active{transform:scale(.9)}
+.patient-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;transition:all .15s}
+.patient-card:active{background:#1e293b}
+.enc-card{border-left:4px solid;border-radius:10px;padding:12px;margin-bottom:10px;background:#0f172a;border-color:#1e293b;cursor:pointer}
+.enc-card:active{background:#1e293b}
+.enc-card.surgery{border-left-color:#ef4444}.enc-card.consult{border-left-color:#3b82f6}
+.enc-card.followup{border-left-color:#22c55e}.enc-card.imaging{border-left-color:#a855f7}
+.enc-card.other{border-left-color:#f59e0b}
+.enc-type{font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;display:inline-block;text-transform:uppercase;letter-spacing:.3px}
+.enc-type.surgery{background:#7f1d1d;color:#fca5a5}.enc-type.consult{background:#1e3a5f;color:#93c5fd}
+.enc-type.followup{background:#052e16;color:#86efac}.enc-type.imaging{background:#3b0764;color:#d8b4fe}
+.enc-type.other{background:#78350f;color:#fbbf24}
+.timeline-line{position:relative;padding-left:24px}
+.timeline-line::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:#1e293b}
+.timeline-dot{position:absolute;left:4px;top:14px;width:10px;height:10px;border-radius:50%;border:2px solid #1e293b;background:#020617}
+.timeline-dot.surgery{border-color:#ef4444;background:#7f1d1d}
+.timeline-dot.consult{border-color:#3b82f6;background:#1e3a5f}
+.timeline-dot.followup{border-color:#22c55e;background:#052e16}
+.timeline-dot.imaging{border-color:#a855f7;background:#3b0764}
+.timeline-dot.other{border-color:#f59e0b;background:#78350f}
+.img-thumb{width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid #1e293b;cursor:pointer;margin:2px}
+.overlay{position:fixed;inset:0;background:#000d;z-index:200;display:flex;align-items:center;justify-content:center;padding:12px}
+.overlay img{max-width:100%;max-height:90vh;border-radius:8px}
+.overlay-close{position:fixed;top:16px;right:16px;z-index:201;background:#334155;border:none;color:#fff;font-size:20px;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.back-btn{background:none;border:none;color:#60a5fa;font-size:13px;font-weight:700;padding:8px 0;margin-bottom:8px;display:flex;align-items:center;gap:4px}
+.chip-input{display:flex;flex-wrap:wrap;gap:4px;padding:6px;background:#020617;border:1px solid #1e293b;border-radius:8px;margin-bottom:8px;min-height:40px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:#1d4ed8;color:#fff}
+.chip .x{cursor:pointer;opacity:.7;font-size:14px;line-height:1}
+.chip-input input{border:none;background:transparent;color:#e2e8f0;font-size:12px;outline:none;flex:1;min-width:80px;padding:4px}
+.cpt-suggest{background:#0f172a;border:1px solid #1e293b;border-radius:8px;max-height:200px;overflow-y:auto;margin-top:-8px;margin-bottom:8px}
+.cpt-suggest div{padding:8px 12px;font-size:12px;color:#cbd5e1;cursor:pointer;border-bottom:1px solid #1e293b0a}
+.cpt-suggest div:hover,.cpt-suggest div:active{background:#1e293b}
+.cpt-suggest .code{font-family:monospace;font-weight:700;color:#60a5fa;margin-right:6px}
+.sync-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+.sync-badge.ok{background:#052e16;color:#86efac}.sync-badge.pending{background:#78350f;color:#fbbf24}
+.empty{text-align:center;padding:40px 20px;color:#475569;font-size:13px}
+.count-badge{background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px}
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+<div id="app" class="w"></div>
+<script>
+"use strict";
+
+// ── AUTH (shared with OpNote — same origin, same token) ──
+let accessLocked=true,accessPinErr='',_googleClientId='';
+const ACCESS_TOKEN_KEY='opnote-session-token';
+let _authToken=localStorage.getItem(ACCESS_TOKEN_KEY)||'';
+
+async function authFetch(url,opts={}){
+  opts.headers=opts.headers||{};
+  if(_authToken)opts.headers['Authorization']='Bearer '+_authToken;
+  const resp=await fetch(url,opts);
+  if(resp.status===401){accessLocked=true;accessPinErr='Session expired';render();throw new Error('Unauthorized');}
+  if(resp.status===429){accessPinErr='Rate limited. Wait 5 min.';render();throw new Error('Rate limited');}
+  return resp;
+}
+
+async function handleGoogleCredential(response){
+  accessPinErr='';
+  try{
+    const r=await fetch('/auth/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:response.credential})});
+    const d=await r.json();
+    if(!r.ok){accessPinErr=d.error==='Unauthorized email'?'Not authorized':'Sign-in failed';render();return;}
+    localStorage.setItem(ACCESS_TOKEN_KEY,d.token);_authToken=d.token;
+    document.cookie='__opnote_token='+d.token+';path=/;SameSite=Strict;Secure';
+    accessLocked=false;render();syncPatients();
+  }catch(e){accessPinErr='Network error';render();}
+}
+
+function initGoogleSignIn(){
+  if(!_googleClientId||!window.google?.accounts?.id)return;
+  google.accounts.id.initialize({client_id:_googleClientId,callback:handleGoogleCredential,auto_select:true});
+  google.accounts.id.prompt();
+}
+
+async function signOut(){
+  try{await authFetch('/auth/logout',{method:'POST'});}catch{}
+  localStorage.removeItem(ACCESS_TOKEN_KEY);_authToken='';
+  document.cookie='__opnote_token=;path=/;SameSite=Strict;Secure;max-age=0';
+  accessLocked=true;render();
+}
+
+// Auth init
+(async function(){
+  try{
+    const r=await fetch('/auth/status');
+    if(r.ok){
+      const d=await r.json();_googleClientId=d.google_client_id||'';
+      if(_authToken){
+        try{const v=await fetch('/health',{headers:{'Authorization':'Bearer '+_authToken}});
+          if(v.ok){accessLocked=false;render();syncPatients();return;}}catch{}
+        _authToken='';localStorage.removeItem(ACCESS_TOKEN_KEY);
+      }
+    }
+  }catch{}
+  accessLocked=true;render();setTimeout(initGoogleSignIn,500);
+})();
+
+// ── HELPERS ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function calcAge(dob){if(!dob)return'';const b=new Date(dob+'T00:00:00'),t=new Date(),a=t.getFullYear()-b.getFullYear();return(t.getMonth()<b.getMonth()||(t.getMonth()===b.getMonth()&&t.getDate()<b.getDate()))?a-1:a;}
+function fmtDate(d){if(!d)return'';try{const p=new Date(d+'T00:00:00');return p.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch{return d;}}
+
+// ── STATE ──
+let view='list'; // list | addPatient | timeline | addEncounter | imageViewer
+let patients=[];
+let editPatientId=null;
+let viewPatientId=null;
+let editEncounterId=null;
+let viewImageSrc=null;
+let searchText='';
+let filterTags=[];
+let tagInput='';
+let encCptInput='';
+let encIcdInput='';
+let cptSuggestions=[];
+let _syncing=false;
+let _lastSync=0;
+let _syncError='';
+let _imageQueue=[];
+let _imageSyncing=false;
+
+// ── INDEXEDDB ──
+const IDB_NAME='cohort-tracker',IDB_VER=1;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const req=indexedDB.open(IDB_NAME,IDB_VER);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains('patients'))db.createObjectStore('patients',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('images')){
+        const s=db.createObjectStore('images',{keyPath:'id'});
+        s.createIndex('patientId','patientId',{unique:false});
+        s.createIndex('encounterId','encounterId',{unique:false});
+      }
+    };
+    req.onsuccess=()=>res(req.result);
+    req.onerror=()=>rej(req.error);
+  });
+}
+
+async function idbGetAll(store){const db=await openDB();return new Promise((r,j)=>{const tx=db.transaction(store,'readonly');const rq=tx.objectStore(store).getAll();rq.onsuccess=()=>r(rq.result);rq.onerror=()=>j(rq.error);});}
+async function idbPut(store,obj){const db=await openDB();return new Promise((r,j)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(obj);tx.oncomplete=()=>r();tx.onerror=()=>j(tx.error);});}
+async function idbDelete(store,id){const db=await openDB();return new Promise((r,j)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(id);tx.oncomplete=()=>r();tx.onerror=()=>j(tx.error);});}
+async function idbGetByIndex(store,idx,val){const db=await openDB();return new Promise((r,j)=>{const tx=db.transaction(store,'readonly');const rq=tx.objectStore(store).index(idx).getAll(val);rq.onsuccess=()=>r(rq.result);rq.onerror=()=>j(rq.error);});}
+
+async function loadPatients(){
+  try{patients=await idbGetAll('patients');}catch{patients=[];}
+  patients.sort((a,b)=>(b._updatedAt||0)-(a._updatedAt||0));
+}
+
+async function savePatient(p){
+  p._updatedAt=Date.now();
+  await idbPut('patients',p);
+  await loadPatients();
+}
+
+async function deletePatient(id){
+  await idbDelete('patients',id);
+  // Delete all images for this patient
+  try{const imgs=await idbGetByIndex('images','patientId',id);for(const img of imgs)await idbDelete('images',img.id);}catch{}
+  await loadPatients();
+}
+
+// ── IMAGE COMPRESSION ──
+function compressImage(file,maxPx=1200,quality=0.6){
+  return new Promise((res,rej)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>maxPx||h>maxPx){const r=Math.min(maxPx/w,maxPx/h);w=Math.round(w*r);h=Math.round(h*r);}
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);
+        const b64=c.toDataURL('image/jpeg',quality);
+        res({base64:b64.split(',')[1],mimeType:'image/jpeg',width:w,height:h,sizeBytes:Math.round(b64.length*0.75)});
+      };
+      img.onerror=rej;
+      img.src=reader.result;
+    };
+    reader.onerror=rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── OCR ──
+async function ocrImage(base64,mimeType){
+  // Try server GPT-4o vision first
+  try{
+    const resp=await authFetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      messages:[{role:'system',content:'Extract ALL text from this image. Return only the extracted text, nothing else.'},{role:'user',content:[{type:'image_url',image_url:{url:`data:${mimeType};base64,${base64}`}},{type:'text',text:'Extract all text from this image.'}]}],
+      max_completion_tokens:2000,temperature:0.1
+    })});
+    if(resp.ok){const d=await resp.json();if(d.content)return d.content;}
+  }catch{}
+  // Fallback: Tesseract.js
+  try{
+    if(window.Tesseract){
+      const result=await Tesseract.recognize(`data:${mimeType};base64,${base64}`,'eng');
+      return result.data.text;
+    }
+  }catch{}
+  return '';
+}
+
+// ── IMAGE SAVE ──
+async function captureImage(patientId,encounterId,file,category='clinical'){
+  const comp=await compressImage(file);
+  const img={
+    id:uid(),patientId,encounterId,category,
+    base64:comp.base64,mimeType:comp.mimeType,
+    name:file.name||'capture',ocrText:'',caption:'',
+    ts:Date.now(),sizeBytes:comp.sizeBytes,_synced:false
+  };
+  await idbPut('images',img);
+  // Queue OCR in background
+  ocrImage(comp.base64,comp.mimeType).then(text=>{
+    img.ocrText=text;idbPut('images',img);render();
+  }).catch(()=>{});
+  // Queue for sync
+  _imageQueue.push(img.id);
+  syncImagesBatch();
+  return img;
+}
+
+// ── SYNC: PATIENTS ──
+async function syncPatients(){
+  if(_syncing)return;_syncing=true;_syncError='';
+  try{
+    await loadPatients();
+    const resp=await authFetch('/cohort/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patients})});
+    if(!resp.ok)throw new Error('sync failed');
+    const{patients:merged}=await resp.json();
+    // Save merged back to IDB
+    const db=await openDB();
+    const tx=db.transaction('patients','readwrite');
+    const store=tx.objectStore('patients');
+    // Clear and re-add
+    store.clear();
+    for(const p of merged)store.put(p);
+    await new Promise((r,j)=>{tx.oncomplete=r;tx.onerror=j;});
+    patients=merged;
+    patients.sort((a,b)=>(b._updatedAt||0)-(a._updatedAt||0));
+    _lastSync=Date.now();
+    render();
+  }catch(e){_syncError=e.message;console.warn('Cohort sync error:',e);}
+  finally{_syncing=false;}
+}
+
+// ── SYNC: IMAGES ──
+async function syncImagesBatch(){
+  if(_imageSyncing)return;_imageSyncing=true;
+  try{
+    const allImgs=await idbGetAll('images');
+    const unsyncedImgs=allImgs.filter(i=>!i._synced);
+    // Batch of 5
+    const batch=unsyncedImgs.slice(0,5);
+    if(!batch.length){_imageSyncing=false;return;}
+    const resp=await authFetch('/cohort/images/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:batch})});
+    if(resp.ok){
+      const{saved}=await resp.json();
+      for(const img of batch){
+        if(saved.includes(img.id)){img._synced=true;await idbPut('images',img);}
+      }
+    }
+  }catch(e){console.warn('Image sync error:',e);}
+  finally{_imageSyncing=false;}
+  // Continue if more
+  const remaining=await idbGetAll('images');
+  if(remaining.some(i=>!i._synced))setTimeout(syncImagesBatch,2000);
+}
+
+// Load images from server for a patient
+async function loadServerImages(patientId){
+  try{
+    const resp=await authFetch(`/cohort/images/${patientId}`);
+    if(!resp.ok)return;
+    const{images}=await resp.json();
+    for(const img of images){
+      img._synced=true;
+      await idbPut('images',img);
+    }
+  }catch{}
+}
+
+// Periodic sync
+setInterval(()=>{if(!accessLocked&&!_syncing)syncPatients();},60000);
+window.addEventListener('beforeunload',()=>{
+  if(_authToken){
+    document.cookie='__opnote_token='+_authToken+';path=/;SameSite=Strict;Secure';
+    const blob=new Blob([JSON.stringify({patients})],{type:'application/json'});
+    navigator.sendBeacon('/cohort/sync',blob);
+  }
+});
+
+// ── CPT AUTOCOMPLETE (common neurosurgery codes) ──
+const CPT_CODES=[
+  {code:'63030',desc:'Lumbar laminotomy/discectomy',rvu:14.43},
+  {code:'63047',desc:'Lumbar laminectomy single',rvu:16.48},
+  {code:'63048',desc:'Lumbar laminectomy addl segment',rvu:3.79},
+  {code:'22551',desc:'ACDF single level',rvu:24.03},
+  {code:'22552',desc:'ACDF each addl level',rvu:5.14},
+  {code:'22630',desc:'Lumbar arthrodesis posterior',rvu:22.97},
+  {code:'22633',desc:'TLIF single level',rvu:28.65},
+  {code:'22634',desc:'TLIF each addl level',rvu:6.17},
+  {code:'22612',desc:'Lumbar posterolateral fusion',rvu:24.50},
+  {code:'22614',desc:'Lumbar fusion each addl level',rvu:5.46},
+  {code:'22842',desc:'Posterior instrumentation 3-6 segments',rvu:14.10},
+  {code:'22853',desc:'Interbody device placement',rvu:5.55},
+  {code:'61304',desc:'Craniotomy for tumor supratentorial',rvu:30.18},
+  {code:'61510',desc:'Craniotomy brain abscess/cyst',rvu:29.83},
+  {code:'61312',desc:'Craniotomy for evacuation hematoma',rvu:28.95},
+  {code:'61154',desc:'Burr hole for evacuation hematoma',rvu:14.10},
+  {code:'62223',desc:'VP shunt creation',rvu:13.81},
+  {code:'62230',desc:'VP shunt revision',rvu:10.24},
+  {code:'20930',desc:'Allograft for spine surgery',rvu:2.24},
+  {code:'20936',desc:'Autograft local for spine',rvu:3.27},
+  {code:'20937',desc:'Autograft morselized iliac crest',rvu:4.11},
+  {code:'63081',desc:'Vertebral corpectomy anterior cervical',rvu:25.83},
+  {code:'63075',desc:'Discectomy anterior cervical',rvu:22.81},
+  {code:'63077',desc:'Discectomy anterior thoracic',rvu:26.29},
+  {code:'22554',desc:'Anterior cervical fusion',rvu:20.71},
+  {code:'61700',desc:'Carotid/intracranial aneurysm surgery',rvu:38.92},
+  {code:'63005',desc:'Cervical laminectomy',rvu:17.61},
+  {code:'63040',desc:'Cervical laminotomy/discectomy',rvu:16.77},
+  {code:'63056',desc:'Transpedicular decompression',rvu:19.51},
+  {code:'99213',desc:'E/M established low complexity',rvu:1.30},
+  {code:'99214',desc:'E/M established moderate complexity',rvu:1.92},
+  {code:'99215',desc:'E/M established high complexity',rvu:2.80},
+  {code:'99203',desc:'E/M new patient low complexity',rvu:1.60},
+  {code:'99204',desc:'E/M new patient moderate complexity',rvu:2.60},
+  {code:'99205',desc:'E/M new patient high complexity',rvu:3.50},
+  {code:'99243',desc:'Office consult moderate complexity',rvu:2.53},
+  {code:'99244',desc:'Office consult mod-high complexity',rvu:3.75},
+  {code:'99245',desc:'Office consult high complexity',rvu:4.83},
+  {code:'99252',desc:'Inpatient consult straightforward',rvu:1.50},
+  {code:'99253',desc:'Inpatient consult low complexity',rvu:2.28},
+  {code:'99254',desc:'Inpatient consult moderate complexity',rvu:3.36},
+  {code:'99255',desc:'Inpatient consult high complexity',rvu:4.38},
+];
+
+function searchCpt(q){
+  if(!q||q.length<2)return[];
+  const lq=q.toLowerCase();
+  return CPT_CODES.filter(c=>c.code.includes(lq)||c.desc.toLowerCase().includes(lq)).slice(0,8);
+}
+
+// ── ENCOUNTER TYPES ──
+const ENC_TYPES=['surgery','consult','followup','imaging','other'];
+const ENC_LABELS={surgery:'Surgery',consult:'Consult',followup:'Follow-up',imaging:'Imaging',other:'Other'};
+
+// ── ALL TAGS ──
+function allTags(){
+  const s=new Set();
+  patients.forEach(p=>(p.tags||[]).forEach(t=>s.add(t)));
+  return [...s].sort();
+}
+
+// ── FORM STATE ──
+let formPatient={name:'',dob:'',mrn:'',insurance:'',tags:[]};
+let formEncounter={date:'',type:'surgery',procedure:'',diagnosis:'',laterality:'',cptCodes:[],icdCodes:[],notes:'',complications:''};
+
+function resetPatientForm(p){
+  formPatient=p?{name:p.name||'',dob:p.dob||'',mrn:p.mrn||'',insurance:p.insurance||'',tags:[...(p.tags||[])]}:{name:'',dob:'',mrn:'',insurance:'',tags:[]};
+  tagInput='';
+}
+
+function resetEncounterForm(enc){
+  if(enc){
+    formEncounter={date:enc.date||'',type:enc.type||'surgery',procedure:enc.procedure||'',diagnosis:enc.diagnosis||'',laterality:enc.laterality||'',cptCodes:[...(enc.cptCodes||[])],icdCodes:[...(enc.icdCodes||[])],notes:enc.notes||'',complications:enc.complications||''};
+  }else{
+    const today=new Date().toISOString().split('T')[0];
+    formEncounter={date:today,type:'surgery',procedure:'',diagnosis:'',laterality:'',cptCodes:[],icdCodes:[],notes:'',complications:''};
+  }
+  encCptInput='';encIcdInput='';cptSuggestions=[];
+}
+
+// ── EXPORT ──
+function deidentify(p){
+  const age=calcAge(p.dob);
+  const copy=JSON.parse(JSON.stringify(p));
+  delete copy.name;delete copy.dob;delete copy.mrn;
+  copy.age=age;
+  return copy;
+}
+
+function exportPatient(p){
+  const d=deidentify(p);
+  const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`cohort_patient_${p.id}.json`;a.click();
+}
+
+function exportAll(){
+  const d=patients.map(deidentify);
+  const blob=new Blob([JSON.stringify({cohort:d,exportedAt:new Date().toISOString(),count:d.length},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cohort_export.json';a.click();
+}
+
+// ── RENDER ──
+function render(){
+  const app=document.getElementById('app');
+
+  // AUTH GATE
+  if(accessLocked){
+    let h=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center">`;
+    h+=`<div style="font-size:32px;margin-bottom:12px">📋</div>`;
+    h+=`<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:4px">Patient Cohort Tracker</div>`;
+    h+=`<div style="font-size:12px;color:#475569;margin-bottom:24px">MOC Case Log</div>`;
+    h+=`<div id="google-signin-btn" style="margin-bottom:16px"></div>`;
+    if(accessPinErr)h+=`<div style="color:#fca5a5;font-size:13px;margin-top:12px;font-weight:600">${esc(accessPinErr)}</div>`;
+    h+=`</div>`;
+    app.innerHTML=h;
+    setTimeout(()=>{if(_googleClientId&&window.google?.accounts?.id){google.accounts.id.renderButton(document.getElementById('google-signin-btn'),{theme:'filled_blue',size:'large',shape:'pill',text:'signin_with',width:250});google.accounts.id.prompt();}},100);
+    return;
+  }
+
+  let h='';
+
+  // HEADER
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">`;
+  h+=`<div><div style="font-size:20px;font-weight:800;color:#fff">Cohort Tracker</div>`;
+  h+=`<div style="font-size:11px;color:#475569;margin-top:2px">MOC Case Log · ${patients.length}/100 patients</div></div>`;
+  h+=`<div style="display:flex;gap:6px">`;
+  h+=`<a href="/opnote" class="btn" style="background:#334155;text-decoration:none;display:flex;align-items:center">OpNote</a>`;
+  h+=`<button class="btn" style="background:#334155" onclick="exportAll()">📥</button>`;
+  h+=`<button class="btn" style="background:#991b1b" onclick="signOut()">⏻</button>`;
+  h+=`</div></div>`;
+
+  // Sync status
+  if(_lastSync){
+    const ago=Math.round((Date.now()-_lastSync)/1000);
+    const label=ago<60?ago+'s ago':Math.round(ago/60)+'m ago';
+    h+=`<div style="font-size:10px;color:#475569;text-align:right;margin-bottom:8px">Last sync: ${label}${_syncing?' · syncing...':''}</div>`;
+  }
+
+  // ── VIEW: PATIENT LIST ──
+  if(view==='list'){
+    // Search
+    h+=`<input class="inp" placeholder="Search patients..." value="${esc(searchText)}" oninput="searchText=this.value;render()">`;
+
+    // Tag filters
+    const tags=allTags();
+    if(tags.length){
+      h+=`<div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:4px">`;
+      for(const t of tags){
+        const on=filterTags.includes(t);
+        h+=`<span class="tag ${on?'on':'off'}" onclick="toggleFilter('${esc(t)}')">${esc(t)}</span>`;
+      }
+      h+=`</div>`;
+    }
+
+    // Patient cards
+    let filtered=patients;
+    if(searchText){
+      const q=searchText.toLowerCase();
+      filtered=filtered.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.mrn||'').toLowerCase().includes(q)||(p.tags||[]).some(t=>t.toLowerCase().includes(q)));
+    }
+    if(filterTags.length){
+      filtered=filtered.filter(p=>filterTags.every(t=>(p.tags||[]).includes(t)));
+    }
+
+    if(!filtered.length){
+      h+=`<div class="empty">${patients.length?'No matching patients':'No patients yet. Tap + to add your first patient.'}</div>`;
+    }
+
+    for(const p of filtered){
+      const age=calcAge(p.dob);
+      const encCount=(p.encounters||[]).length;
+      const lastEnc=p.encounters&&p.encounters.length?p.encounters.sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]:null;
+      h+=`<div class="patient-card" onclick="openTimeline('${p.id}')">`;
+      h+=`<div style="display:flex;justify-content:space-between;align-items:start">`;
+      h+=`<div><div style="font-size:15px;font-weight:700;color:#f1f5f9">${esc(p.name||'Unnamed')}</div>`;
+      h+=`<div style="font-size:12px;color:#94a3b8;margin-top:2px">${age?age+'y':''}${p.mrn?' · MRN: '+esc(p.mrn):''}</div></div>`;
+      h+=`<span class="count-badge">${encCount} enc</span>`;
+      h+=`</div>`;
+      if(lastEnc){
+        h+=`<div style="font-size:11px;color:#64748b;margin-top:6px">Last: ${fmtDate(lastEnc.date)} — ${esc(lastEnc.procedure||lastEnc.type||'')}</div>`;
+      }
+      if((p.tags||[]).length){
+        h+=`<div style="margin-top:6px">`;
+        for(const t of p.tags)h+=`<span class="tag on" style="font-size:10px;padding:2px 8px;cursor:default">${esc(t)}</span>`;
+        h+=`</div>`;
+      }
+      h+=`</div>`;
+    }
+
+    h+=`<button class="fab" onclick="openAddPatient()">+</button>`;
+  }
+
+  // ── VIEW: ADD/EDIT PATIENT ──
+  else if(view==='addPatient'){
+    h+=`<button class="back-btn" onclick="goBack()">← Back</button>`;
+    h+=`<div class="card"><div class="card-h"><span class="title">${editPatientId?'Edit':'Add'} Patient</span></div><div class="card-b">`;
+
+    h+=`<div class="lbl">Patient Name</div>`;
+    h+=`<input class="inp" placeholder="Last, First" value="${esc(formPatient.name)}" oninput="formPatient.name=this.value">`;
+
+    h+=`<div class="lbl">Date of Birth</div>`;
+    h+=`<input class="inp" type="date" value="${esc(formPatient.dob)}" oninput="formPatient.dob=this.value">`;
+
+    h+=`<div class="lbl">MRN</div>`;
+    h+=`<input class="inp" placeholder="Medical Record Number" value="${esc(formPatient.mrn)}" oninput="formPatient.mrn=this.value">`;
+
+    h+=`<div class="lbl">Insurance</div>`;
+    h+=`<input class="inp" placeholder="Insurance" value="${esc(formPatient.insurance)}" oninput="formPatient.insurance=this.value">`;
+
+    h+=`<div class="lbl">Tags</div>`;
+    h+=`<div class="chip-input">`;
+    for(let i=0;i<formPatient.tags.length;i++){
+      h+=`<span class="chip">${esc(formPatient.tags[i])}<span class="x" onclick="formPatient.tags.splice(${i},1);render()">×</span></span>`;
+    }
+    h+=`<input placeholder="Add tag..." value="${esc(tagInput)}" oninput="tagInput=this.value" onkeydown="if(event.key==='Enter'&&tagInput.trim()){event.preventDefault();formPatient.tags.push(tagInput.trim());tagInput='';render();}">`;
+    h+=`</div>`;
+    // Quick tag suggestions
+    const existingTags=allTags().filter(t=>!formPatient.tags.includes(t));
+    if(existingTags.length){
+      h+=`<div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:4px">`;
+      for(const t of existingTags.slice(0,10))h+=`<span class="tag off" onclick="formPatient.tags.push('${esc(t)}');render()">${esc(t)}</span>`;
+      h+=`</div>`;
+    }
+
+    h+=`<button class="big" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);margin-top:8px" onclick="savePatientForm()">${editPatientId?'Update':'Add'} Patient</button>`;
+
+    if(editPatientId){
+      h+=`<button class="big" style="background:#7f1d1d;margin-top:8px" onclick="confirmDeletePatient()">Delete Patient</button>`;
+    }
+
+    h+=`</div></div>`;
+  }
+
+  // ── VIEW: PATIENT TIMELINE ──
+  else if(view==='timeline'){
+    const p=patients.find(x=>x.id===viewPatientId);
+    if(!p){view='list';render();return;}
+
+    h+=`<button class="back-btn" onclick="goBack()">← Patients</button>`;
+
+    // Patient header
+    const age=calcAge(p.dob);
+    h+=`<div class="card"><div class="card-b" style="padding:12px 14px">`;
+    h+=`<div style="display:flex;justify-content:space-between;align-items:start">`;
+    h+=`<div><div style="font-size:18px;font-weight:800;color:#fff">${esc(p.name||'Unnamed')}</div>`;
+    h+=`<div style="font-size:13px;color:#94a3b8;margin-top:2px">${age?age+'y':''} ${p.dob?' · DOB: '+fmtDate(p.dob):''}${p.mrn?' · MRN: '+esc(p.mrn):''}</div>`;
+    if(p.insurance)h+=`<div style="font-size:12px;color:#64748b;margin-top:2px">Ins: ${esc(p.insurance)}</div>`;
+    h+=`</div>`;
+    h+=`<div style="display:flex;gap:4px">`;
+    h+=`<button class="btn" style="background:#334155;font-size:10px" onclick="openEditPatient('${p.id}')">Edit</button>`;
+    h+=`<button class="btn" style="background:#334155;font-size:10px" onclick="exportPatient(patients.find(x=>x.id==='${p.id}'))">📥</button>`;
+    h+=`</div></div>`;
+    if((p.tags||[]).length){
+      h+=`<div style="margin-top:8px">`;
+      for(const t of p.tags)h+=`<span class="tag on" style="font-size:10px;padding:2px 8px;cursor:default">${esc(t)}</span>`;
+      h+=`</div>`;
+    }
+    h+=`</div></div>`;
+
+    // Encounters timeline
+    const encs=[...(p.encounters||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">`;
+    h+=`<div class="lbl" style="margin:0">Encounters (${encs.length})</div>`;
+    h+=`<button class="btn" style="background:#2563eb;font-size:11px" onclick="openAddEncounter('${p.id}')">+ Encounter</button>`;
+    h+=`</div>`;
+
+    if(!encs.length){
+      h+=`<div class="empty">No encounters yet. Add the first one.</div>`;
+    }else{
+      h+=`<div class="timeline-line">`;
+      for(const enc of encs){
+        const cls=enc.type||'other';
+        h+=`<div style="position:relative;padding-bottom:4px">`;
+        h+=`<div class="timeline-dot ${cls}"></div>`;
+        h+=`<div class="enc-card ${cls}" onclick="openEditEncounter('${p.id}','${enc.id}')">`;
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">`;
+        h+=`<span class="enc-type ${cls}">${esc(ENC_LABELS[cls]||cls)}</span>`;
+        h+=`<span style="font-size:11px;color:#64748b">${fmtDate(enc.date)}</span>`;
+        h+=`</div>`;
+        if(enc.procedure)h+=`<div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:2px">${esc(enc.procedure)}</div>`;
+        if(enc.diagnosis)h+=`<div style="font-size:12px;color:#94a3b8">${esc(enc.diagnosis)}</div>`;
+        if(enc.laterality)h+=`<div style="font-size:11px;color:#fbbf24;margin-top:2px">Laterality: ${esc(enc.laterality)}</div>`;
+        if((enc.cptCodes||[]).length){
+          h+=`<div style="margin-top:4px">`;
+          for(const c of enc.cptCodes)h+=`<span style="font-family:monospace;font-size:11px;color:#60a5fa;margin-right:6px">${esc(c)}</span>`;
+          h+=`</div>`;
+        }
+        // Image thumbnails
+        h+=`<div id="enc-imgs-${enc.id}" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>`;
+        if(enc.notes)h+=`<div style="font-size:12px;color:#64748b;margin-top:4px;white-space:pre-wrap;max-height:60px;overflow:hidden">${esc(enc.notes)}</div>`;
+        if(enc.complications)h+=`<div style="font-size:11px;color:#fca5a5;margin-top:4px">Complications: ${esc(enc.complications)}</div>`;
+        h+=`</div></div>`;
+      }
+      h+=`</div>`;
+    }
+
+    h+=`<button class="fab" onclick="openAddEncounter('${p.id}')">+</button>`;
+
+    // After render, load images for each encounter
+    setTimeout(()=>loadEncounterThumbnails(p.id),50);
+  }
+
+  // ── VIEW: ADD/EDIT ENCOUNTER ──
+  else if(view==='addEncounter'){
+    const p=patients.find(x=>x.id===viewPatientId);
+    if(!p){view='list';render();return;}
+
+    h+=`<button class="back-btn" onclick="view='timeline';render()">← ${esc(p.name||'Patient')}</button>`;
+    h+=`<div class="card"><div class="card-h"><span class="title">${editEncounterId?'Edit':'Add'} Encounter</span></div><div class="card-b">`;
+
+    h+=`<div class="lbl">Date</div>`;
+    h+=`<input class="inp" type="date" value="${esc(formEncounter.date)}" oninput="formEncounter.date=this.value">`;
+
+    h+=`<div class="lbl">Type</div>`;
+    h+=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">`;
+    for(const t of ENC_TYPES){
+      const on=formEncounter.type===t;
+      h+=`<button class="btn enc-type ${t}" style="${on?'opacity:1;transform:scale(1.05)':'opacity:.5'};padding:8px 14px;font-size:12px" onclick="formEncounter.type='${t}';render()">${esc(ENC_LABELS[t])}</button>`;
+    }
+    h+=`</div>`;
+
+    h+=`<div class="lbl">Procedure / Visit</div>`;
+    h+=`<input class="inp" placeholder="e.g., L4-5 laminectomy" value="${esc(formEncounter.procedure)}" oninput="formEncounter.procedure=this.value">`;
+
+    h+=`<div class="lbl">Diagnosis</div>`;
+    h+=`<input class="inp" placeholder="e.g., Lumbar stenosis L4-5" value="${esc(formEncounter.diagnosis)}" oninput="formEncounter.diagnosis=this.value">`;
+
+    h+=`<div class="lbl">Laterality</div>`;
+    h+=`<select class="sel" onchange="formEncounter.laterality=this.value">`;
+    for(const l of ['','left','right','bilateral']){
+      h+=`<option value="${l}" ${formEncounter.laterality===l?'selected':''}>${l||'— Select —'}</option>`;
+    }
+    h+=`</select>`;
+
+    // CPT codes
+    h+=`<div class="lbl">CPT Codes</div>`;
+    h+=`<div class="chip-input">`;
+    for(let i=0;i<formEncounter.cptCodes.length;i++){
+      h+=`<span class="chip" style="background:#0ea5e9">${esc(formEncounter.cptCodes[i])}<span class="x" onclick="formEncounter.cptCodes.splice(${i},1);render()">×</span></span>`;
+    }
+    h+=`<input placeholder="Search CPT..." value="${esc(encCptInput)}" oninput="encCptInput=this.value;cptSuggestions=searchCpt(this.value);render()" onkeydown="if(event.key==='Enter'&&encCptInput.trim()){event.preventDefault();formEncounter.cptCodes.push(encCptInput.trim());encCptInput='';cptSuggestions=[];render();}">`;
+    h+=`</div>`;
+    if(cptSuggestions.length){
+      h+=`<div class="cpt-suggest">`;
+      for(const s of cptSuggestions){
+        h+=`<div onclick="formEncounter.cptCodes.push('${s.code}');encCptInput='';cptSuggestions=[];render()"><span class="code">${s.code}</span>${esc(s.desc)} <span style="color:#86efac;font-size:10px">${s.rvu} RVU</span></div>`;
+      }
+      h+=`</div>`;
+    }
+
+    // ICD codes
+    h+=`<div class="lbl">ICD-10 Codes</div>`;
+    h+=`<div class="chip-input">`;
+    for(let i=0;i<formEncounter.icdCodes.length;i++){
+      h+=`<span class="chip" style="background:#8b5cf6">${esc(formEncounter.icdCodes[i])}<span class="x" onclick="formEncounter.icdCodes.splice(${i},1);render()">×</span></span>`;
+    }
+    h+=`<input placeholder="e.g., M48.06" value="${esc(encIcdInput)}" oninput="encIcdInput=this.value" onkeydown="if(event.key==='Enter'&&encIcdInput.trim()){event.preventDefault();formEncounter.icdCodes.push(encIcdInput.trim());encIcdInput='';render();}">`;
+    h+=`</div>`;
+
+    h+=`<div class="lbl">Notes</div>`;
+    h+=`<textarea class="ta" rows="4" placeholder="Clinical notes..." oninput="formEncounter.notes=this.value">${esc(formEncounter.notes)}</textarea>`;
+    h+=`<div style="height:8px"></div>`;
+
+    h+=`<div class="lbl">Complications</div>`;
+    h+=`<input class="inp" placeholder="None" value="${esc(formEncounter.complications)}" oninput="formEncounter.complications=this.value">`;
+
+    // Image capture
+    h+=`<div class="lbl" style="margin-top:8px">Images</div>`;
+    h+=`<div style="display:flex;gap:8px;margin-bottom:8px">`;
+    h+=`<button class="btn" style="background:#334155;flex:1" onclick="captureFromCamera()">📷 Camera</button>`;
+    h+=`<button class="btn" style="background:#334155;flex:1" onclick="captureFromFile()">📁 File</button>`;
+    h+=`</div>`;
+    h+=`<div id="enc-edit-imgs" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px"></div>`;
+    h+=`<input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFileCapture(this.files)">`;
+    h+=`<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handleFileCapture(this.files)">`;
+
+    h+=`<button class="big" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);margin-top:8px" onclick="saveEncounterForm()">${editEncounterId?'Update':'Add'} Encounter</button>`;
+
+    if(editEncounterId){
+      h+=`<button class="big" style="background:#7f1d1d;margin-top:8px" onclick="confirmDeleteEncounter()">Delete Encounter</button>`;
+    }
+
+    h+=`</div></div>`;
+
+    // Load edit images
+    setTimeout(()=>loadEditEncounterImages(),50);
+  }
+
+  app.innerHTML=h;
+
+  // Image viewer overlay (appended outside app)
+  if(viewImageSrc){
+    let ov=document.getElementById('img-overlay');
+    if(!ov){ov=document.createElement('div');ov.id='img-overlay';document.body.appendChild(ov);}
+    ov.innerHTML=`<div class="overlay" onclick="closeImageViewer()"><button class="overlay-close" onclick="event.stopPropagation();closeImageViewer()">×</button><img src="${viewImageSrc}"></div>`;
+  }else{
+    const ov=document.getElementById('img-overlay');
+    if(ov)ov.innerHTML='';
+  }
+}
+
+// ── NAVIGATION ──
+function goBack(){
+  if(view==='addPatient'){view=editPatientId&&viewPatientId?'timeline':'list';}
+  else if(view==='timeline'){view='list';viewPatientId=null;}
+  else if(view==='addEncounter'){view='timeline';}
+  else{view='list';}
+  editPatientId=null;editEncounterId=null;render();
+}
+
+function openAddPatient(){
+  editPatientId=null;resetPatientForm();view='addPatient';render();
+}
+
+function openEditPatient(id){
+  const p=patients.find(x=>x.id===id);if(!p)return;
+  editPatientId=id;resetPatientForm(p);view='addPatient';render();
+}
+
+function openTimeline(id){
+  viewPatientId=id;view='timeline';render();
+  loadServerImages(id);
+}
+
+function openAddEncounter(patientId){
+  viewPatientId=patientId;editEncounterId=null;resetEncounterForm();view='addEncounter';render();
+}
+
+function openEditEncounter(patientId,encId){
+  viewPatientId=patientId;editEncounterId=encId;
+  const p=patients.find(x=>x.id===patientId);if(!p)return;
+  const enc=(p.encounters||[]).find(e=>e.id===encId);
+  resetEncounterForm(enc);view='addEncounter';render();
+}
+
+function toggleFilter(tag){
+  const i=filterTags.indexOf(tag);
+  if(i>=0)filterTags.splice(i,1);else filterTags.push(tag);
+  render();
+}
+
+// ── SAVE PATIENT ──
+async function savePatientForm(){
+  if(!formPatient.name.trim()){alert('Name is required');return;}
+  if(editPatientId){
+    const p=patients.find(x=>x.id===editPatientId);if(!p)return;
+    p.name=formPatient.name.trim();p.dob=formPatient.dob;p.mrn=formPatient.mrn.trim();
+    p.insurance=formPatient.insurance.trim();p.tags=[...formPatient.tags];
+    await savePatient(p);
+    view='timeline';viewPatientId=editPatientId;editPatientId=null;
+  }else{
+    const p={
+      id:uid(),name:formPatient.name.trim(),dob:formPatient.dob,mrn:formPatient.mrn.trim(),
+      insurance:formPatient.insurance.trim(),tags:[...formPatient.tags],
+      encounters:[],_createdAt:Date.now(),_updatedAt:Date.now()
+    };
+    await savePatient(p);
+    view='timeline';viewPatientId=p.id;
+  }
+  render();syncPatients();
+}
+
+// ── SAVE ENCOUNTER ──
+async function saveEncounterForm(){
+  if(!formEncounter.date){alert('Date is required');return;}
+  const p=patients.find(x=>x.id===viewPatientId);if(!p)return;
+  if(!p.encounters)p.encounters=[];
+
+  const enc={
+    id:editEncounterId||uid(),
+    date:formEncounter.date,type:formEncounter.type,
+    procedure:formEncounter.procedure.trim(),diagnosis:formEncounter.diagnosis.trim(),
+    laterality:formEncounter.laterality,cptCodes:[...formEncounter.cptCodes],
+    icdCodes:[...formEncounter.icdCodes],notes:formEncounter.notes.trim(),
+    complications:formEncounter.complications.trim(),imageIds:[]
+  };
+
+  // Collect image IDs for this encounter
+  try{
+    const imgs=await idbGetByIndex('images','encounterId',enc.id);
+    enc.imageIds=imgs.map(i=>i.id);
+  }catch{}
+
+  if(editEncounterId){
+    const idx=p.encounters.findIndex(e=>e.id===editEncounterId);
+    if(idx>=0){
+      enc.imageIds=p.encounters[idx].imageIds||enc.imageIds;
+      p.encounters[idx]=enc;
+    }
+  }else{
+    p.encounters.push(enc);
+  }
+
+  await savePatient(p);
+  view='timeline';editEncounterId=null;render();syncPatients();
+}
+
+// ── DELETE ──
+function confirmDeletePatient(){
+  if(!confirm('Delete this patient and all encounters?'))return;
+  deletePatient(editPatientId).then(()=>{
+    view='list';editPatientId=null;viewPatientId=null;render();syncPatients();
+  });
+}
+
+function confirmDeleteEncounter(){
+  const p=patients.find(x=>x.id===viewPatientId);if(!p)return;
+  if(!confirm('Delete this encounter?'))return;
+  p.encounters=(p.encounters||[]).filter(e=>e.id!==editEncounterId);
+  savePatient(p).then(()=>{
+    view='timeline';editEncounterId=null;render();syncPatients();
+  });
+}
+
+// ── IMAGE HANDLING ──
+function captureFromCamera(){document.getElementById('cameraInput').click();}
+function captureFromFile(){document.getElementById('fileInput').click();}
+
+async function handleFileCapture(files){
+  if(!files||!files.length)return;
+  const encId=editEncounterId||uid();
+  if(!editEncounterId){
+    // Set encounter ID for new encounters so images can attach
+    editEncounterId=encId;
+    formEncounter._tempEncId=encId;
+  }
+  for(const file of files){
+    await captureImage(viewPatientId,encId,file);
+  }
+  render();
+}
+
+async function loadEncounterThumbnails(patientId){
+  const p=patients.find(x=>x.id===patientId);if(!p)return;
+  for(const enc of(p.encounters||[])){
+    const container=document.getElementById('enc-imgs-'+enc.id);
+    if(!container)continue;
+    try{
+      const imgs=await idbGetByIndex('images','encounterId',enc.id);
+      let ih='';
+      for(const img of imgs){
+        ih+=`<img class="img-thumb" src="data:${img.mimeType};base64,${img.base64}" onclick="event.stopPropagation();viewImageSrc='data:${img.mimeType};base64,${img.base64}';render()">`;
+      }
+      container.innerHTML=ih;
+    }catch{}
+  }
+}
+
+async function loadEditEncounterImages(){
+  const container=document.getElementById('enc-edit-imgs');
+  if(!container)return;
+  const encId=editEncounterId;
+  if(!encId){container.innerHTML='';return;}
+  try{
+    const imgs=await idbGetByIndex('images','encounterId',encId);
+    let ih='';
+    for(const img of imgs){
+      ih+=`<div style="position:relative;display:inline-block">`;
+      ih+=`<img class="img-thumb" src="data:${img.mimeType};base64,${img.base64}" onclick="viewImageSrc='data:${img.mimeType};base64,${img.base64}';render()">`;
+      ih+=`<button style="position:absolute;top:-4px;right:-4px;background:#7f1d1d;color:#fca5a5;border:none;border-radius:50%;width:18px;height:18px;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="deleteEncImage('${img.id}')">×</button>`;
+      if(img.ocrText)ih+=`<div style="position:absolute;bottom:2px;left:2px;background:#000a;color:#86efac;font-size:8px;padding:1px 4px;border-radius:3px">OCR</div>`;
+      ih+=`</div>`;
+    }
+    container.innerHTML=ih;
+  }catch{}
+}
+
+async function deleteEncImage(imgId){
+  await idbDelete('images',imgId);
+  render();
+  setTimeout(loadEditEncounterImages,50);
+}
+
+function closeImageViewer(){viewImageSrc=null;render();}
+
+// ── INIT ──
+(async function(){
+  await loadPatients();
+  try{render();}catch{}
+})();
+</script>
+</body>
+</html>

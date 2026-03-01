@@ -184,6 +184,81 @@ def _load_all_cases() -> list[dict]:
     return entities
 
 
+# ── Cohort tables (MOC case log) ─────────────────────────────────────────────
+_cohort_patients_client = None
+COHORT_PATIENTS_TABLE = "cohortpatients"
+_cohort_patients_mem: dict[str, dict] = {}
+
+_cohort_images_client = None
+COHORT_IMAGES_TABLE = "cohortimages"
+_cohort_images_mem: dict[str, dict] = {}
+
+
+def get_cohort_patients_table():
+    global _cohort_patients_client
+    if _cohort_patients_client is not None:
+        return _cohort_patients_client
+    if not _table_conn:
+        return None
+    svc = TableServiceClient.from_connection_string(_table_conn)
+    svc.create_table_if_not_exists(COHORT_PATIENTS_TABLE)
+    _cohort_patients_client = svc.get_table_client(COHORT_PATIENTS_TABLE)
+    return _cohort_patients_client
+
+
+def get_cohort_images_table():
+    global _cohort_images_client
+    if _cohort_images_client is not None:
+        return _cohort_images_client
+    if not _table_conn:
+        return None
+    svc = TableServiceClient.from_connection_string(_table_conn)
+    svc.create_table_if_not_exists(COHORT_IMAGES_TABLE)
+    _cohort_images_client = svc.get_table_client(COHORT_IMAGES_TABLE)
+    return _cohort_images_client
+
+
+def _upsert_cohort_patient(patient_id: str, data: dict, updated_at: float):
+    tbl = get_cohort_patients_table()
+    entity = {
+        "PartitionKey": "dan",
+        "RowKey": patient_id,
+        "data": json.dumps(data),
+        "updatedAt": float(updated_at),
+    }
+    if tbl:
+        tbl.upsert_entity(entity)
+    else:
+        _cohort_patients_mem[patient_id] = entity
+
+
+def _load_all_cohort_patients() -> list[dict]:
+    tbl = get_cohort_patients_table()
+    if tbl:
+        return list(tbl.query_entities("PartitionKey eq 'dan'"))
+    return list(_cohort_patients_mem.values())
+
+
+def _upsert_cohort_image(patient_id: str, image_id: str, data: dict):
+    tbl = get_cohort_images_table()
+    entity = {
+        "PartitionKey": patient_id,
+        "RowKey": image_id,
+        "data": json.dumps(data),
+    }
+    if tbl:
+        tbl.upsert_entity(entity)
+    else:
+        _cohort_images_mem[f"{patient_id}_{image_id}"] = entity
+
+
+def _load_cohort_images(patient_id: str) -> list[dict]:
+    tbl = get_cohort_images_table()
+    if tbl:
+        return list(tbl.query_entities(f"PartitionKey eq '{patient_id}'"))
+    return [v for k, v in _cohort_images_mem.items() if k.startswith(patient_id + "_")]
+
+
 # ── Config table (PIN hash storage) ──────────────────────────────────────────
 _config_table_client = None
 CONFIG_TABLE = "opnoteconfig"
@@ -305,7 +380,7 @@ def _record_failure(client_ip: str):
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
-PUBLIC_PATHS = {"/health", "/", "/opnote", "/auth/status", "/auth/register", "/auth/google", "/auth/logout"}
+PUBLIC_PATHS = {"/health", "/", "/opnote", "/cohort", "/auth/status", "/auth/register", "/auth/google", "/auth/logout"}
 
 
 class PinAuthMiddleware(BaseHTTPMiddleware):
@@ -969,6 +1044,139 @@ async def delete_case(request: Request):
         return JSONResponse({"error": "Missing id"}, status_code=400)
     _upsert_case(cid, {}, 0, deleted=True)
     return {"ok": True}
+
+
+@app.get("/cohort")
+async def cohort_page():
+    return FileResponse(str(STATIC_DIR / "cohort.html"), media_type="text/html")
+
+
+@app.post("/cohort/sync")
+async def sync_cohort(request: Request):
+    """Merge client cohort patients with server. Newer _updatedAt wins."""
+    body = await request.json()
+    client_patients = body.get("patients", [])
+
+    entities = _load_all_cohort_patients()
+    server_map: dict[str, dict] = {}
+    for e in entities:
+        rid = e.get("RowKey") or e.get("id", "")
+        server_map[rid] = e
+
+    for cp in client_patients:
+        pid = cp.get("id")
+        if not pid:
+            continue
+        c_ts = cp.get("_updatedAt", 0)
+        existing = server_map.get(pid)
+        if existing:
+            s_ts = existing.get("updatedAt", 0)
+            if c_ts > s_ts:
+                _upsert_cohort_patient(pid, cp, c_ts)
+                server_map[pid] = {"RowKey": pid, "data": json.dumps(cp), "updatedAt": c_ts}
+        else:
+            _upsert_cohort_patient(pid, cp, c_ts)
+            server_map[pid] = {"RowKey": pid, "data": json.dumps(cp), "updatedAt": c_ts}
+
+    merged = []
+    for rid, e in server_map.items():
+        try:
+            c = json.loads(e["data"])
+            c["_updatedAt"] = e.get("updatedAt", 0)
+            merged.append(c)
+        except Exception:
+            pass
+
+    return {"patients": merged}
+
+
+@app.post("/cohort/images/sync")
+async def sync_cohort_images(request: Request):
+    """Upload cohort images in batches. Handles chunking for >900KB."""
+    body = await request.json()
+    images = body.get("images", [])
+    saved = []
+
+    for img in images:
+        patient_id = img.get("patientId", "")
+        image_id = img.get("id", "")
+        if not patient_id or not image_id:
+            continue
+
+        b64 = img.get("base64", "")
+        size = len(b64)
+
+        if size > 900_000:
+            # Chunk into multiple entities
+            chunk_size = 800_000
+            chunks = [b64[i:i + chunk_size] for i in range(0, size, chunk_size)]
+            for ci, chunk in enumerate(chunks):
+                chunk_data = {
+                    "id": f"{image_id}_chunk{ci}",
+                    "patientId": patient_id,
+                    "encounterId": img.get("encounterId", ""),
+                    "chunkIndex": ci,
+                    "totalChunks": len(chunks),
+                    "parentId": image_id,
+                    "base64": chunk,
+                    "mimeType": img.get("mimeType", ""),
+                    "name": img.get("name", ""),
+                    "category": img.get("category", ""),
+                    "ocrText": img.get("ocrText", "") if ci == 0 else "",
+                    "caption": img.get("caption", "") if ci == 0 else "",
+                    "ts": img.get("ts", 0),
+                }
+                _upsert_cohort_image(patient_id, f"{image_id}_chunk{ci}", chunk_data)
+        else:
+            _upsert_cohort_image(patient_id, image_id, img)
+
+        saved.append(image_id)
+
+    return {"saved": saved}
+
+
+@app.get("/cohort/images/{patient_id}")
+async def get_cohort_images(patient_id: str):
+    """Load all images for a patient, reassembling chunks."""
+    entities = _load_cohort_images(patient_id)
+    images_map: dict[str, dict] = {}
+    chunks_map: dict[str, list] = {}
+
+    for e in entities:
+        try:
+            d = json.loads(e["data"])
+        except Exception:
+            continue
+
+        if "parentId" in d:
+            parent = d["parentId"]
+            if parent not in chunks_map:
+                chunks_map[parent] = []
+            chunks_map[parent].append(d)
+        else:
+            images_map[d.get("id", e.get("RowKey", ""))] = d
+
+    # Reassemble chunked images
+    for parent_id, chunk_list in chunks_map.items():
+        chunk_list.sort(key=lambda c: c.get("chunkIndex", 0))
+        if not chunk_list:
+            continue
+        first = chunk_list[0]
+        reassembled = {
+            "id": parent_id,
+            "patientId": first.get("patientId", ""),
+            "encounterId": first.get("encounterId", ""),
+            "base64": "".join(c.get("base64", "") for c in chunk_list),
+            "mimeType": first.get("mimeType", ""),
+            "name": first.get("name", ""),
+            "category": first.get("category", ""),
+            "ocrText": first.get("ocrText", ""),
+            "caption": first.get("caption", ""),
+            "ts": first.get("ts", 0),
+        }
+        images_map[parent_id] = reassembled
+
+    return {"images": list(images_map.values())}
 
 
 @app.post("/generate")

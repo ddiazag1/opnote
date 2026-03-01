@@ -1345,13 +1345,34 @@ function startEncounterFromPrep(patient){
   docImages=pImgs.filter(i=>i.category==='note').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name,ocrText:i.ocrText||''}));
   const ocrTexts=pImgs.filter(i=>i.category==='note'&&i.ocrText).map(i=>i.ocrText);
   let prefill='';
-  if(ocrTexts.length)prefill=ocrTexts.join('\n\n---\n\n');
+  // Build structured pre-fill from prep agent structured fields
+  const s=patient.structured||{};
+  if(s.history&&s.history.trim()&&!s.history.toLowerCase().startsWith('no ')){
+    prefill+='LAST ASSESSMENT & PLAN:\n'+s.history.trim()+'\n\n';
+  }
+  if(s.imaging&&s.imaging.trim()&&!s.imaging.toLowerCase().startsWith('no ')){
+    prefill+='IMAGING:\n'+s.imaging.trim()+'\n\n';
+  }
+  if(s.emg&&s.emg.trim()&&!s.emg.toLowerCase().includes('not found')){
+    prefill+='EMG/NCS:\n'+s.emg.trim()+'\n\n';
+  }
+  if(s.medications&&s.medications.trim()){
+    prefill+='MEDICATIONS:\n'+s.medications.trim()+'\n\n';
+  }
+  if(s.problems&&s.problems.trim()){
+    prefill+='PROBLEMS:\n'+s.problems.trim()+'\n\n';
+  }
+  if(s.allergies&&s.allergies.trim()){
+    prefill+='ALLERGIES:\n'+s.allergies.trim()+'\n\n';
+  }
+  // Append OCR text from uploaded images
+  if(ocrTexts.length)prefill+=(prefill?'---\n\n':'')+ocrTexts.join('\n\n---\n\n');
   if(patient.is_surgery){setEncounterType('OpNote');}
   else{
     const vtMap={'New Patient':'Clinic - New Patient','Post-Op':'Clinic - Post-Op','Follow-up':'Clinic - Established','Consult':'Consult'};
     setEncounterType(vtMap[patient.visit_type]||'Clinic - Established');
   }
-  if(prefill)setState({text:(state.text?state.text+'\n\n':'')+prefill});
+  if(prefill)setState({text:prefill.trim()});
   setTimeout(()=>{const el=document.getElementById('mainInput');if(el)el.scrollIntoView({behavior:'smooth'});},100);
   render();
 }
@@ -1921,6 +1942,7 @@ function render(){
   // HEADER
   const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure</span>';
   h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}</div></div><div style="display:flex;gap:6px">`;
+  h+=`<a href="/cohort" class="btn" style="background:#1e3a5f;text-decoration:none;display:inline-flex;align-items:center;font-size:10px">Cohort</a>`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;scribeOpen=true;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null})">+ New</button>`;
   h+=`</div></div>`;
