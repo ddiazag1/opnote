@@ -1038,14 +1038,14 @@ function formatOneNoteTitle(){
 
 async function oneNoteEnsureSection(sectionName){
   const cache=oneNoteGetCache();const cacheKey='section:'+sectionName;
-  if(cache[cacheKey]&&cache._date===todayISO())return cache[cacheKey];
-  let nbId=cache.notebookId;
-  if(!nbId){const r=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks?$top=1');const d=await r.json();if(!d.value||!d.value.length)throw new Error('No OneNote notebooks found');nbId=d.value[0].id;cache.notebookId=nbId;}
+  if(cache[cacheKey]&&cache._date===todayISO()&&cache.notebookName)return {sectionId:cache[cacheKey],notebookName:cache.notebookName};
+  let nbId=cache.notebookId;let nbName=cache.notebookName;
+  if(!nbId){const r=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks?$top=1');const d=await r.json();if(!d.value||!d.value.length)throw new Error('No OneNote notebooks found. Create one at onenote.com first.');nbId=d.value[0].id;nbName=d.value[0].displayName||'Unknown';cache.notebookId=nbId;cache.notebookName=nbName;}
   const sr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections');
   const sd=await sr.json();const existing=(sd.value||[]).find(s=>s.displayName===sectionName);
-  if(existing){cache[cacheKey]=existing.id;cache._date=todayISO();oneNoteSaveCache(cache);return existing.id;}
+  if(existing){cache[cacheKey]=existing.id;cache._date=todayISO();oneNoteSaveCache(cache);return {sectionId:existing.id,notebookName:nbName||cache.notebookName};}
   const cr=await graphFetch('https://graph.microsoft.com/v1.0/me/onenote/notebooks/'+nbId+'/sections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({displayName:sectionName})});
-  const cd=await cr.json();cache[cacheKey]=cd.id;cache._date=todayISO();oneNoteSaveCache(cache);return cd.id;
+  const cd=await cr.json();cache[cacheKey]=cd.id;cache._date=todayISO();oneNoteSaveCache(cache);return {sectionId:cd.id,notebookName:nbName||cache.notebookName};
 }
 
 function pickOneNoteImage(type){
@@ -1071,7 +1071,7 @@ async function oneNoteSend(){
     const codes=state.billCodes||'';
     const dt=todayISO();
     const sectionName=typeCat(state.nt)+' '+dt;
-    const sectionId=await oneNoteEnsureSection(sectionName);
+    const {sectionId,notebookName}=await oneNoteEnsureSection(sectionName);
     const pageTitle=formatOneNoteTitle();
     const noteHtml=esc(note).replace(/^([A-Z][A-Z &\/\-]+:)/gm,'</p><p><b>$1</b>').replace(/\n/g,'<br/>');
     const cptLines=codes?codes.split('\n').filter(l=>l.trim()):[];
@@ -1110,7 +1110,8 @@ async function oneNoteSend(){
       if(!r.ok)throw new Error('OneNote send failed: '+r.status);
     }
     setState({phase:'done'});
-    const btn=document.getElementById('oneNoteBtn');if(btn){btn.innerHTML='\u2705 Sent!';btn.style.background='#059669';setTimeout(()=>{if(btn){btn.innerHTML='\uD83D\uDCD3 Send to OneNote';btn.style.background='';}},2000);}
+    scribeToast('Sent to "'+notebookName+'" > '+sectionName);
+    const btn=document.getElementById('oneNoteBtn');if(btn){btn.innerHTML='\u2705 Sent!';btn.style.background='#059669';setTimeout(()=>{if(btn){btn.innerHTML='\uD83D\uDCD3 Send to OneNote';btn.style.background='';}},3000);}
   }catch(e){
     setState({err:'OneNote: '+e.message,phase:'done'});
   }
