@@ -103,6 +103,7 @@ tr:nth-child(odd) td{background:#060a14}tr:nth-child(even) td{background:#0a1020
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 </head>
 <body>
 <div id="app" class="w"></div>
@@ -1057,37 +1058,62 @@ function renderPatientImageUI(pid){
   return h;
 }
 
-async function copyScheduleToClipboard(){
-  if(!prepSchedule.length){scribeToast('No schedule to copy');return;}
+function exportDayDocx(){
+  if(!prepSchedule.length){scribeToast('No schedule to export');return;}
+  if(typeof docx==='undefined'){scribeToast('DOCX library loading — try again');return;}
   try{
     const date=todayISO();
-    let html='<h1 style="font-family:Segoe UI,sans-serif">Daily Schedule &amp; Briefings</h1>';
-    html+='<p style="color:#666">'+date+' &bull; '+prepSchedule.length+' patient'+(prepSchedule.length>1?'s':'')+'</p><hr>';
-    for(const p of prepSchedule){
-      html+='<h2 style="font-family:Segoe UI,sans-serif;margin-top:16px">'+(p.appointment_time||'')+' &mdash; '+esc(p.patient_name||'')+'</h2>';
-      html+='<p><i>Visit Type: '+esc(p.visit_type||'')+'</i></p>';
+    const sections=[];
+    for(let pi=0;pi<prepSchedule.length;pi++){
+      const p=prepSchedule[pi];
+      const children=[];
+      children.push(new docx.Paragraph({heading:docx.HeadingLevel.HEADING_1,children:[new docx.TextRun({text:(p.appointment_time||'')+' — '+(p.patient_name||''),bold:true,size:32})]}));
+      children.push(new docx.Paragraph({children:[new docx.TextRun({text:(p.visit_type||''),italics:true,size:24,color:'3b82f6'})]}));
+      children.push(new docx.Paragraph({text:''}));
       if(p.briefing){
         const lines=(p.briefing||'').split('\n');
         for(const line of lines){
           const m=line.match(/^([A-Z][A-Z /&\-]+):\s*(.*)/);
-          if(m){html+='<p><b>'+esc(m[1])+':</b> '+esc(m[2])+'</p>';}
-          else if(line.trim()){html+='<p style="font-family:Consolas,monospace;font-size:11px">'+esc(line)+'</p>';}
+          if(m){children.push(new docx.Paragraph({spacing:{after:40},children:[new docx.TextRun({text:m[1]+': ',bold:true,size:22}),new docx.TextRun({text:m[2],size:22})]}));}
+          else if(line.trim()){children.push(new docx.Paragraph({spacing:{after:20},children:[new docx.TextRun({text:line,font:'Consolas',size:18})]}));}
         }
+      }else{
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No briefing available',italics:true,color:'999999'})]}));
       }
-      if(prepNotes[p.id]){html+='<p><b>Notes:</b> '+esc(prepNotes[p.id])+'</p>';}
+      if(prepNotes[p.id]){
+        children.push(new docx.Paragraph({text:''}));
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:'NOTES: ',bold:true,size:22}),new docx.TextRun({text:prepNotes[p.id],size:22})]}));
+      }
       const imgs=prepImages[p.id]||[];
       for(const img of imgs){
-        html+='<p><b>'+(img.category==='reference'?'Reference':'Note')+' Image:</b></p>';
-        const w=img.category==='reference'?500:400;
-        html+='<img src="data:'+img.mimeType+';base64,'+img.base64+'" width="'+w+'" style="max-width:100%;margin:4px 0"/>';
-        if(img.ocrText){html+='<pre style="font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap;background:#f0f0f0;padding:8px;border-radius:4px">'+esc(img.ocrText)+'</pre>';}
+        children.push(new docx.Paragraph({text:''}));
+        children.push(new docx.Paragraph({children:[new docx.TextRun({text:(img.category==='reference'?'REFERENCE IMAGE':'NOTE IMAGE (OCR)'),bold:true,size:20})]}));
+        try{
+          const buf=Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0));
+          const w=img.category==='reference'?500:400;
+          const h=img.category==='reference'?375:300;
+          children.push(new docx.Paragraph({children:[new docx.ImageRun({data:buf,transformation:{width:w,height:h}})]}));
+        }catch(ie){}
+        if(img.ocrText){
+          children.push(new docx.Paragraph({children:[new docx.TextRun({text:'OCR Text:',bold:true,size:18})]}));
+          children.push(new docx.Paragraph({children:[new docx.TextRun({text:img.ocrText,font:'Consolas',size:16})]}));
+        }
       }
-      html+='<hr>';
+      sections.push({children});
     }
-    const blob=new Blob([html],{type:'text/html'});
-    await navigator.clipboard.write([new ClipboardItem({'text/html':blob,'text/plain':new Blob([prepSchedule.map(p=>(p.appointment_time||'')+' - '+(p.patient_name||'')+' ('+p.visit_type+')').join('\n')],{type:'text/plain'})})]);
-    scribeToast('Copied! Paste into OneNote');
-  }catch(e){scribeToast('Copy failed: '+e.message);}
+    const doc=new docx.Document({sections});
+    docx.Packer.toBlob(doc).then(function(blob){
+      const fname='OpNote-'+date+'.docx';
+      const isMobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
+      if(isMobile&&navigator.canShare){
+        const file=new File([blob],fname,{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+        if(navigator.canShare({files:[file]})){navigator.share({title:'OpNote Schedule',files:[file]});return;}
+      }
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);},5000);
+      scribeToast('Downloaded '+fname);
+    }).catch(function(e){scribeToast('DOCX error: '+e.message);});
+  }catch(e){alert('DOCX error: '+e.message);}
 }
 
 function buildNoteHTML(){
@@ -1160,24 +1186,32 @@ async function loadPrepImages(){
 function pickPatientImage(patientId,category){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async()=>{
+    const saved=[];
     for(const f of inp.files){
       const reader=new FileReader();
       const b64=await new Promise((res,rej)=>{reader.onload=()=>res(reader.result.split(',')[1]);reader.onerror=rej;reader.readAsDataURL(f);});
       const img={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),patientId,date:todayISO(),category,base64:b64,mimeType:f.type||'image/jpeg',name:f.name,ocrText:'',ts:Date.now()};
-      if(category==='note'){
-        try{
-          const blob=new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:img.mimeType});
-          const file=new File([blob],f.name,{type:img.mimeType});
-          img.ocrText=await ocrImage(file);
-        }catch(e){
-          try{const result=await Tesseract.recognize('data:'+img.mimeType+';base64,'+b64,'eng');img.ocrText=result.data.text||'';}catch(e2){img.ocrText='[OCR failed]';}
-        }
-      }
       await savePatientImage(img);
       if(!prepImages[patientId])prepImages[patientId]=[];
       prepImages[patientId].push(img);
+      saved.push(img);
     }
     render();
+    if(category==='note'&&saved.length){
+      scribeToast('OCR running on '+saved.length+' image'+(saved.length>1?'s':'')+'...');
+      for(const img of saved){
+        try{
+          const blob=new Blob([Uint8Array.from(atob(img.base64),c=>c.charCodeAt(0))],{type:img.mimeType});
+          const file=new File([blob],img.name||'image',{type:img.mimeType});
+          img.ocrText=await ocrImage(file);
+        }catch(e){
+          try{const result=await Tesseract.recognize('data:'+img.mimeType+';base64,'+img.base64,'eng');img.ocrText=result.data.text||'';}catch(e2){img.ocrText='[OCR failed]';}
+        }
+        await savePatientImage(img);
+        render();
+      }
+      scribeToast('OCR complete');
+    }
   };inp.click();
 }
 async function removePatientImage(patientId,imgId){
@@ -1232,11 +1266,15 @@ function startEncounterFromPrep(patient){
   const pImgs=prepImages[patient.id]||[];
   clinImages=pImgs.filter(i=>i.category==='reference').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name}));
   docImages=pImgs.filter(i=>i.category==='note').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name,ocrText:i.ocrText||''}));
+  const ocrTexts=pImgs.filter(i=>i.category==='note'&&i.ocrText).map(i=>i.ocrText);
+  let prefill='';
+  if(ocrTexts.length)prefill=ocrTexts.join('\n\n---\n\n');
   if(patient.is_surgery){setEncounterType('OpNote');}
   else{
     const vtMap={'New Patient':'Clinic - New Patient','Post-Op':'Clinic - Post-Op','Follow-up':'Clinic - Established','Consult':'Consult'};
     setEncounterType(vtMap[patient.visit_type]||'Clinic - Established');
   }
+  if(prefill)setState({text:(state.text?state.text+'\n\n':'')+prefill});
   setTimeout(()=>{const el=document.getElementById('mainInput');if(el)el.scrollIntoView({behavior:'smooth'});},100);
   render();
 }
@@ -1922,7 +1960,7 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="copyScheduleToClipboard()">Copy</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="exportDayDocx()">DOCX</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button></div>`;
       }
       // Paste schedule modal
       if(prepPasteModal){
