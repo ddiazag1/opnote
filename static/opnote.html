@@ -2178,12 +2178,7 @@ function render(){
     }
     h+=`</div>`;
 
-    // ---- PHI CARD (local only) ----
-    h+=`<div class="card" style="border-color:#eab308;margin-bottom:12px"><div class="card-h"><span class="title" style="color:#fef08a">\uD83D\uDD12 Patient ID</span><span style="font-size:9px;font-weight:700;color:#eab308;background:#422006;padding:2px 8px;border-radius:4px">LOCAL ONLY</span></div><div class="card-b" style="padding:10px 14px">`;
-    h+=`<div style="display:flex;gap:8px;margin-bottom:6px"><div style="flex:2"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">Name</div><input class="inp" value="${esc(phiState.name)}" placeholder="Last, First" oninput="phiState.name=this.value" style="font-size:12px"></div><div style="flex:1"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">MRN</div><input class="inp" value="${esc(phiState.mrn)}" placeholder="MRN" oninput="phiState.mrn=this.value" style="font-size:12px"></div></div>`;
-    const _phiAge=calculateAge(phiState.dob);
-    h+=`<div style="display:flex;gap:8px"><div style="flex:1"><div style="font-size:10px;color:#94a3b8;margin-bottom:2px">DOB</div><input class="inp" type="date" value="${esc(phiState.dob)}" oninput="phiState.dob=this.value" style="font-size:12px"></div><div style="flex:1;display:flex;align-items:end"><span style="font-size:12px;color:#64748b;padding:10px 0">${_phiAge!==null?_phiAge+'y':''}${phiState.name?' \u00B7 PHI active':''}</span></div></div>`;
-    h+=`</div></div>`;
+    // PHI card removed — phiState functions kept for copy/rehydrate
 
     // ---- UNIFIED ENCOUNTER TYPE SELECTOR ----
     h+=`<div style="margin-bottom:12px">`;
