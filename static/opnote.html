@@ -1307,6 +1307,7 @@ let prepPasteModal=false;
 let prepPasteText="";
 let ocrProgress="";
 let prepAddForm=false;
+let prepSummaryOpen=false;
 let prepAddName="";
 let prepAddTime="08:00";
 let prepAddType="Follow-up";
@@ -2059,7 +2060,48 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#059669;flex:1;padding:8px;font-size:11px" onclick="exportDayDocx()">DOCX</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button><button class="btn" style="background:#991b1b;flex:1;padding:8px;font-size:11px" onclick="clearAllPatients()">Clear</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#f59e0b;flex:1;padding:8px;font-size:11px;color:#000" onclick="prepSummaryOpen=!prepSummaryOpen;render()">Summary</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button><button class="btn" style="background:#991b1b;flex:1;padding:8px;font-size:11px" onclick="clearAllPatients()">Clear</button></div>`;
+        // One-page summary panel
+        if(prepSummaryOpen){
+          h+=`<div style="margin-top:10px;background:#020617;border:2px solid #f59e0b;border-radius:10px;padding:12px">`;
+          h+=`<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:13px;font-weight:800;color:#fbbf24">Day Summary</span><button style="color:#475569;background:none;border:none;font-size:14px" onclick="prepSummaryOpen=false;render()">✕</button></div>`;
+          prepSchedule.forEach(p=>{
+            const st=p.structured||{};
+            const histLC=(st.history||p.briefing||'').toLowerCase();
+            const imgLC=(st.imaging||'').toLowerCase();
+            // Parse ordered imaging from last note
+            const orderedImgs=[];
+            const orx=[
+              {rx:/(?:order|recommend|obtain|schedule|get)\b.*?\b(?:mri)\b.*?\b(cervical|thoracic|lumbar|brain|head|spine)/gi,label:'MRI'},
+              {rx:/(?:mri)\b.*?\b(cervical|thoracic|lumbar|brain|head|spine)\b.*?(?:order|recommend|obtain|schedule)/gi,label:'MRI'},
+              {rx:/(?:order|recommend|obtain|schedule|get)\b.*?\b(?:ct|cat scan)\b.*?\b(cervical|thoracic|lumbar|brain|head|spine|abdomen)/gi,label:'CT'},
+              {rx:/(?:ct|cat scan)\b.*?\b(cervical|thoracic|lumbar|brain|head|spine|abdomen)\b.*?(?:order|recommend|obtain|schedule)/gi,label:'CT'},
+              {rx:/(?:order|recommend|obtain|schedule|get)\b.*?\b(?:x-ray|xray|radiograph)/gi,label:'X-ray'},
+            ];
+            const oSeen=new Set();
+            for(const r of orx){let m;while((m=r.rx.exec(histLC))!==null){const region=m[1]||'';const key=r.label+(region?' '+region:'');if(!oSeen.has(key)){oSeen.add(key);const got=imgLC.includes(r.label.toLowerCase())&&(region?imgLC.includes(region):true);orderedImgs.push({label:key,got});}}}
+            // What imaging exists
+            const hasImg=st.imaging&&!st.imaging.toLowerCase().startsWith('no ');
+            // One-liner from briefing
+            let oneliner='';
+            if(st.history){const s=st.history.split(/(?<=[.!?])\s+/).filter(x=>x.trim());oneliner=s[0]||'';}
+            if(!oneliner&&p.briefing){const s=p.briefing.split(/(?<=[.!?])\s+/).filter(x=>x.trim());oneliner=s.find(x=>x.toLowerCase().includes('history')||x.toLowerCase().includes('year')||x.toLowerCase().includes('present'))||s[0]||'';}
+            if(oneliner.length>120)oneliner=oneliner.substring(0,120)+'...';
+            const nameStr=anonMode?anonName(p.patient_name):p.patient_name;
+            h+=`<div style="padding:6px 0;border-bottom:1px solid #1e293b;font-size:11px">`;
+            h+=`<div style="display:flex;gap:6px;align-items:baseline"><span style="color:#f59e0b;font-weight:700;min-width:40px">${esc(p.appointment_time||'--:--')}</span><span style="color:#e2e8f0;font-weight:700">${esc(nameStr||p.label)}</span><span style="color:#64748b;font-style:italic">${esc(p.visit_type)}</span></div>`;
+            if(oneliner)h+=`<div style="color:#94a3b8;margin-top:2px;padding-left:46px">${esc(oneliner)}</div>`;
+            // Imaging status line
+            if(hasImg||orderedImgs.length){
+              h+=`<div style="padding-left:46px;margin-top:2px">`;
+              if(hasImg){const imgBrief=st.imaging.split(/\n/)[0]||'';h+=`<span style="color:#60a5fa;font-size:10px">${esc(imgBrief.length>80?imgBrief.substring(0,80)+'...':imgBrief)}</span> `;}
+              orderedImgs.forEach(o=>{h+=`<span style="color:${o.got?'#22c55e':'#ef4444'};font-size:10px;font-weight:700">${o.got?'\\u2713':'\\u2717'} ${esc(o.label)}</span> `;});
+              h+=`</div>`;
+            }
+            h+=`</div>`;
+          });
+          h+=`</div>`;
+        }
       }
       // Paste schedule modal
       if(prepPasteModal){
