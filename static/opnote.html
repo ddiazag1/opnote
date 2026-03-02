@@ -910,6 +910,7 @@ sys_clinic:`CLINIC NOTE RULES:
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
 - Do NOT invent patient occupation, hobbies, or specific activities not mentioned in dictation.
 - NEVER fabricate specific dates for treatments. If dates not given, say "per patient" not invented dates.
+- FOLLOW-UP INTERVAL MATH: TODAY'S DATE is provided at the top of the input. When prior context includes a dated visit with a follow-up interval (e.g. "2 week follow up" from a note dated 01/05/2026), calculate the ACTUAL elapsed time from that prior visit date to TODAY'S DATE and use it in the note. Example: if prior note from 01/05/2026 said "2 week follow up" and today is 03/02/2026, write "~8 week follow up" (the real elapsed time), NOT "2 week follow up". Similarly for surgery dates — calculate actual weeks/months post-op from the surgery date to today.
 - Focus Q:/DEFAULT: on: duration of conservative treatments, imaging date, and follow-up interval ONLY.
 - Include PAST MEDICAL/SURGICAL HISTORY. Include significant PMH (diabetes, cardiac, bleeding disorders, prior cancers, neurological conditions). For prior surgeries, include dates when mentioned (e.g. "L4-5 laminectomy 2019", "ACDF C5-6 March 2023"). For imaging, include the date (e.g. "MRI lumbar spine 01/15/2026"). If not dictated: "PMH: Per chart review" not "ASSUMED unremarkable".
 - Include FAMILY HISTORY if new patient. If not dictated: "FAMILY HISTORY: Noncontributory"
@@ -1705,6 +1706,8 @@ async function processCase(){
     if(nt==="clinic"){const vLabels={new:"NEW VISIT",followup:"FOLLOW-UP VISIT",postop:"POST-OPERATIVE VISIT"};clinicCtx="\nVISIT TYPE: "+(vLabels[state.clinicVisit]||"NEW VISIT")+"\nPATIENT: "+(state.clinicPt==="established"?"ESTABLISHED":"NEW");}
     const sysPrompt=getSYS()+"\nNOTE TYPE: "+(TYPES[nt]?.l||nt)+clinicCtx+getP1END();
     let dictContent=text.trim();
+    // Inject today's date for elapsed-time calculations
+    const _today=new Date();dictContent="TODAY'S DATE: "+(_today.getMonth()+1)+"/"+_today.getDate()+"/"+_today.getFullYear()+"\n\n"+dictContent;
     // Inject prep context (prior MRI, last note, meds, problems) from schedule
     const _pc=state._prepContext||'';
     if(_pc){
@@ -2272,7 +2275,7 @@ function render(){
       h+=`</div>`;
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
-    if(s._prepContext)h+=`<div style="background:#1e3a5f20;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#60a5fa">📋 Chart data loaded (prior notes, imaging, meds) <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_prepContext:''})">✕</button></div>`;
+    if(s._prepContext){h+=`<div style="background:#1e3a5f20;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#60a5fa;cursor:pointer" onclick="this.querySelector('.pc-body').style.display=this.querySelector('.pc-body').style.display==='none'?'block':'none';this.querySelector('.pc-arrow').textContent=this.querySelector('.pc-body').style.display==='none'?'▶':'▼'"><div style="display:flex;justify-content:space-between;align-items:center"><span><span class="pc-arrow">▶</span> 📋 Chart data loaded — tap to view</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="event.stopPropagation();setState({_prepContext:''})">✕</button></div><div class="pc-body" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #1e3a5f;color:#94a3b8;white-space:pre-wrap;font-size:11px;line-height:1.5;max-height:300px;overflow-y:auto;cursor:text" onclick="event.stopPropagation()">${esc(s._prepContext)}</div></div>`;}
     h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="${s._prepContext?'Dictate or type today\'s encounter...':'Dictate, type, or paste...'}" oninput="state.text=this.value">${esc(s.text)}</textarea>`;
     if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';render()">Clear</button></div>`;}
     if(s.linkedTo){const lc=s.cases.find(c=>c.id===s.linkedTo);if(lc)h+=`<div style="background:#1e3a5f30;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#60a5fa">🔗 Linked to: ${esc(lc.proc)} <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({linkedTo:null})">✕</button></div>`;}
