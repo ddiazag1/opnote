@@ -386,8 +386,8 @@ PUBLIC_PATHS = {"/health", "/", "/opnote", "/cohort", "/auth/status", "/auth/reg
 class PinAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        # Public paths — no auth needed
-        if path in PUBLIC_PATHS or path.startswith("/static"):
+        # Public paths — no auth needed (temporarily all public for mobile access)
+        if path in PUBLIC_PATHS or path.startswith("/static") or path.startswith("/prep"):
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
