@@ -380,7 +380,7 @@ def _record_failure(client_ip: str):
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
-PUBLIC_PATHS = {"/health", "/", "/opnote", "/cohort", "/auth/status", "/auth/register", "/auth/google", "/auth/logout"}
+PUBLIC_PATHS = {"/health", "/", "/opnote", "/cohort", "/auth/status", "/auth/register", "/auth/google", "/auth/logout", "/prep"}
 
 
 class PinAuthMiddleware(BaseHTTPMiddleware):
