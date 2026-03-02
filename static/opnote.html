@@ -1324,7 +1324,7 @@ async function fetchPrepSchedule(){
   prepLoading=true;prepSchedule=[];render();
   try{
     const resp=await authFetch('/prep?date='+prepDate);
-    if(resp.ok){const data=await resp.json();if(data.patients&&data.patients.length>0){prepSchedule=data.patients;}}
+    if(resp.ok){const data=await resp.json();if(data.patients&&data.patients.length>0){prepSchedule=data.patients.sort((a,b)=>{const na=parseInt((a.id||'').replace('prep_',''))||0;const nb=parseInt((b.id||'').replace('prep_',''))||0;return na-nb;});}}
   }catch(e){}
   try{await loadPrepImages();}catch{}
   prepLoading=false;render();
