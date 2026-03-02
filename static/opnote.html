@@ -133,7 +133,7 @@ let _syncTimer=null;let _lastSyncTs=0;let _syncing=false;
 function lsS(k,v){try{if(k===SK&&Array.isArray(v)){const now=Date.now();v=v.map(c=>({...c,_updatedAt:c._updatedAt||now}));}localStorage.setItem(k,JSON.stringify(v));}catch{}if(k===SK)scheduleCaseSync();}
 function stampCase(c){return{...c,_updatedAt:Date.now()};}
 function scheduleCaseSync(){if(_syncTimer)clearTimeout(_syncTimer);_syncTimer=setTimeout(()=>{_syncTimer=null;syncCases();},2000);}
-async function syncCases(){if(!serverReachable||_syncing)return;_syncing=true;try{const local=ls(SK,[]);const r=await authFetch('/cases/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cases:local})});if(!r.ok)throw new Error('sync failed');const{cases:merged}=await r.json();merged.sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));try{localStorage.setItem(SK,JSON.stringify(merged));}catch{}if(state&&state.cases){state.cases=merged;try{render();}catch{}}_lastSyncTs=Date.now();}catch(e){console.warn('Case sync error:',e);}finally{_syncing=false;}}
+async function syncCases(){if(!serverReachable||_syncing)return;_syncing=true;try{const local=ls(SK,[]);const r=await authFetch('/cases/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cases:local})});if(!r.ok)throw new Error('sync failed');const{cases:merged}=await r.json();merged.sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));try{localStorage.setItem(SK,JSON.stringify(merged));}catch{}if(state&&state.cases){state.cases=merged;const ae=document.activeElement;if(!ae||ae.id!=='mainInput'){try{render();}catch{}}}_lastSyncTs=Date.now();}catch(e){console.warn('Case sync error:',e);}finally{_syncing=false;}}
 window.addEventListener('beforeunload',()=>{if(serverReachable&&_authToken){document.cookie='__opnote_token='+_authToken+';path=/;SameSite=Strict;Secure';const blob=new Blob([JSON.stringify({cases:ls(SK,[])})],{type:'application/json'});navigator.sendBeacon('/cases/sync',blob);}if(scribeRecording&&_currentRecId&&scribeChunks.length){try{const req=indexedDB.open(AUDIO_DB,1);req.onsuccess=()=>{const db=req.result;const tx=db.transaction(AUDIO_STORE,'readwrite');tx.objectStore(AUDIO_STORE).put({id:_currentRecId,ts:scribeStartTime,encounterType,chunks:[...scribeChunks],mimeType:scribeMR?.mimeType||'audio/webm',status:'recording',duration:Math.floor((Date.now()-scribeStartTime)/1000)});};}catch{}}});
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function escJs(s){return String(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/\n/g,"\\n");}
@@ -602,8 +602,10 @@ async function scribeStartRec(){
     await ct.startTranscribingAsync();
     _speechRecognizer=ct;
     scribeRecording=true;scribeStartTime=Date.now();
-    scribeTimerInterval=setInterval(()=>render(),1000);
+    scribeTimerInterval=setInterval(()=>{const el=document.getElementById('scribeTimer');if(el){const sec=Math.floor((Date.now()-scribeStartTime)/1000);el.textContent=Math.floor(sec/60)+':'+(sec%60<10?'0':'')+sec%60;}else{render();}},1000);
     try{if('wakeLock' in navigator)scribeWakeLock=await navigator.wakeLock.request('screen');}catch{}
+    // Keep audio context alive on mobile: inaudible oscillator + silent audio element
+    try{if(!window._keepAliveCtx){window._keepAliveCtx=new(window.AudioContext||window.webkitAudioContext)();const osc=window._keepAliveCtx.createOscillator();const gain=window._keepAliveCtx.createGain();gain.gain.value=0.001;osc.connect(gain);gain.connect(window._keepAliveCtx.destination);osc.start();window._keepAliveOsc=osc;}}catch{}
     const sa=document.getElementById('scribeSilentAudio');if(sa)sa.play().catch(()=>{});
     render();
   }catch(err){scribeToast('Recording error: '+err.message);console.error('scribeStartRec error:',err);}
@@ -616,6 +618,7 @@ async function scribeStopRec(){
   }
   scribeRecording=false;clearInterval(scribeTimerInterval);
   if(scribeWakeLock){scribeWakeLock.release();scribeWakeLock=null;}
+  try{if(window._keepAliveOsc){window._keepAliveOsc.stop();window._keepAliveOsc=null;}if(window._keepAliveCtx){window._keepAliveCtx.close();window._keepAliveCtx=null;}}catch{}
   const sa=document.getElementById('scribeSilentAudio');if(sa)sa.pause();
   _liveInterim='';
   render();
@@ -711,7 +714,7 @@ async function processAudioRec(id){
     await processCase();
   }catch(err){scribeToast('Network error: '+err.message);scribeProcessing=false;scribeStatus='';render();}
 }
-document.addEventListener('visibilitychange',()=>{if(scribeRecording&&document.visibilityState==='visible'){try{navigator.wakeLock.request('screen').then(wl=>{scribeWakeLock=wl;}).catch(()=>{});}catch{}}});
+document.addEventListener('visibilitychange',()=>{if(scribeRecording&&document.visibilityState==='visible'){try{navigator.wakeLock.request('screen').then(wl=>{scribeWakeLock=wl;}).catch(()=>{});}catch{}try{if(window._keepAliveCtx&&window._keepAliveCtx.state==='suspended')window._keepAliveCtx.resume();}catch{}const sa=document.getElementById('scribeSilentAudio');if(sa&&sa.paused)sa.play().catch(()=>{});}});
 
 // ---- IMAGE ANALYSIS ----
 const IMG_PROMPT="You are a clinical document extractor for neurosurgery. IF MEDICAL IMAGING: Extract findings in surgical format. IF TEXT: Transcribe. No patient identifiers.";
@@ -785,7 +788,7 @@ function parseBillFull(raw){
 }
 function mdmLevel(codes){if(!codes)return"";const m=codes.match(/99(2[01]\d|2[1-5]\d)/);if(!m)return"";const c=parseInt(m[0]);if([99211,99212,99202,99252].includes(c))return"STRAIGHTFORWARD COMPLEXITY";if([99213,99203,99253].includes(c))return"LOW COMPLEXITY";if([99214,99204,99254].includes(c))return"MODERATE COMPLEXITY";if([99215,99205,99255].includes(c))return"HIGH COMPLEXITY";return"";}
 function injectMDM(noteText,codes,nt){if(!noteText||!codes)return noteText;if(nt==="clinic")return noteText;if(nt!=="consult")return noteText;const lvl=mdmLevel(codes);if(!lvl)return noteText;const out=noteText.replace(/((?:CONSULTATION|CONSULT)\s*(?:NOTE)?)\s*([:\-—.]?\s*)/i,(m,header)=>header+" — "+lvl+"\n");return out!==noteText?out:lvl+"\n"+noteText;}
-function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cranial Nerves|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
+function formatEMR(t){var s=stripAll(stripBilling(t));s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,"...").replace(/[\u2013\u2014]/g,"-");s=s.replace(/\.\s+(HEENT|Cardiovascular|Pulmonary|Neurological|Musculoskeletal|Psychiatric|Gastrointestinal|Genitourinary|Skin|Extremities|General|Cranial|Gait|Motor|Sensory|Reflexes|DTRs|Cranial Nerves|Cerebellar|Station|Mental Status|GCS|Rectal|Perianal|Upper Extremity|Lower Extremity|Cervical|Thoracic|Lumbar|Sacral)(?=[\s:.])/g,".\n$1");s=s.replace(/\s+(TOTAL OPERATIVE TIME|ESTIMATED BLOOD LOSS|EBL|COMPLICATIONS|DRAINS|SPECIMENS|COUNTS|CLOSURE|DISPOSITION|IMPLANTS|ANESTHESIA|ANTIBIOTICS|POSITION|TIME OUT|NEUROMONITORING|TECHNIQUE|PREOP DIAGNOSIS|POSTOP DIAGNOSIS|PROCEDURE|INDICATIONS|SURGEON|ASSISTANTS|FINDINGS|FLUIDS|BLOOD PRODUCTS|CRYSTALLOIDS|DVT PROPHYLAXIS|POSITIONING|LATERALITY|INTRAOPERATIVE IMAGING|FLUOROSCOPY|NAVIGATION)(\s*:)/g,"\n$1$2");s=s.replace(/\n(?=[A-Z][A-Z /&\-]{2,}:)/g,"\n\n");s=s.replace(/\.?\s+(?=(ASSESSMENT(?:\s+AND\s+PLAN)?|IMPRESSION(?:\s+AND\s+PLAN)?|HISTORY OF PRESENT ILLNESS|REVIEW OF SYSTEMS|ROS|PAST MEDICAL|PAST SURGICAL|PHYSICAL EXAMINATION|PLAN|DISPOSITION|PRECAUTIONS)\s*:)/gi,"\n\n");s=s.replace(/\n{3,}/g,"\n\n");s=s.replace(/ +$/gm,"");s=s.replace(/  +/g," ");return s.trim();}
 function copyHTML(t,bid){const txt=formatEMR(phiRehydrate(t));const lines=txt.split("\n");let html="",plain="";lines.forEach(ln=>{const tr=ln.trim();if(/^[A-Z][A-Z /&\-]{2,}:/.test(tr))html+="<br><b>"+esc(tr)+"</b><br>";else if(!tr)html+="<br>";else html+=esc(tr)+"<br>";plain+=tr+"\n";});html=html.replace(/^<br>/,"");plain=plain.trim();try{navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([plain],{type:"text/plain"})})]).catch(()=>navigator.clipboard.writeText(plain));}catch{navigator.clipboard.writeText(plain).catch(()=>{});}if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅ Copied!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 function copyPlain(t,bid){navigator.clipboard.writeText(formatEMR(phiRehydrate(t))).catch(()=>{});if(!state.tCopy)setState({tCopy:Date.now()});const b=document.getElementById(bid);if(b){const o=b.innerHTML;b.innerHTML="✅";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}}
 
@@ -877,8 +880,8 @@ sys_clinic:`CLINIC NOTE RULES:
     - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
     - Post-op routine check → LOW or MODERATE COMPLEXITY
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
-- ALLERGIES: Include ALLERGIES section in every clinic note. If not dictated: "ALLERGIES: NKDA ***ASSUMED***" or "Per chart review."
-- CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. If not dictated: "CURRENT MEDICATIONS: Per chart review."
+- ALLERGIES: Include ALLERGIES section in every clinic note. Do NOT list every allergy — only clinically significant drug allergies (e.g. latex, contrast, anesthetics, NSAIDs). If not dictated: "ALLERGIES: NKDA ***ASSUMED***" or "Per chart review."
+- CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. Do NOT list every medication — summarize as category counts (e.g. "antihypertensives x2, statin, gabapentin 300mg TID, aspirin 81mg") highlighting only pain meds, anticoagulants, and neuro-relevant medications by name/dose. If not dictated: "CURRENT MEDICATIONS: Per chart review."
 - ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
@@ -907,7 +910,7 @@ sys_clinic:`CLINIC NOTE RULES:
 - Do NOT invent patient occupation, hobbies, or specific activities not mentioned in dictation.
 - NEVER fabricate specific dates for treatments. If dates not given, say "per patient" not invented dates.
 - Focus Q:/DEFAULT: on: duration of conservative treatments, imaging date, and follow-up interval ONLY.
-- Include PAST MEDICAL/SURGICAL HISTORY. If not dictated: "PMH: Per chart review" not "ASSUMED unremarkable".
+- Include PAST MEDICAL/SURGICAL HISTORY. Include significant PMH (diabetes, cardiac, bleeding disorders, prior cancers, neurological conditions). For prior surgeries, include dates when mentioned (e.g. "L4-5 laminectomy 2019", "ACDF C5-6 March 2023"). For imaging, include the date (e.g. "MRI lumbar spine 01/15/2026"). If not dictated: "PMH: Per chart review" not "ASSUMED unremarkable".
 - Include FAMILY HISTORY if new patient. If not dictated: "FAMILY HISTORY: Noncontributory"
 - Include SOCIAL HISTORY if new patient. If not dictated: "SOCIAL HISTORY: Per chart review. Smoking status documented."`,
 sys_progress:`PROGRESS NOTE RULES:
@@ -1046,7 +1049,7 @@ let state={
   billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:"",verifyRVU:"",
   tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:"",_draftId:null
 };
-function setState(p){Object.assign(state,p);render();}
+function setState(p){Object.assign(state,p);const ae=document.activeElement;if(ae&&ae.id==='mainInput'&&!p.view&&!p.phase&&!p.err){state.text=ae.value;return;}render();}
 
 // ---- PHI STATE (local only, never sent to API) ----
 let phiState={name:'',dob:'',mrn:''};
@@ -1341,6 +1344,27 @@ function clearAllPatients(){
 
 function loadDemoSchedule(){prepSchedule=[...DEMO_SCHEDULE];prepCompleted={};prepExpanded={};activePatient=null;render();}
 
+function parseElapsed(text){
+  const now=new Date();const yr=now.getFullYear();
+  // Try MM/DD/YYYY, MM/DD/YY, MM/DD, Month DD YYYY, Month DD
+  const pats=[
+    /(\d{1,2})\/(\d{1,2})\/(\d{4})/,/(\d{1,2})\/(\d{1,2})\/(\d{2})/,
+    /(\d{1,2})\/(\d{1,2})(?!\d)/,
+    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{1,2})(?:,?\s*(\d{4}))?/i
+  ];
+  for(const p of pats){const m=text.match(p);if(!m)continue;let d;
+    if(/[a-z]/i.test(m[1])){const mo='janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[1].slice(0,3).toLowerCase())/3;d=new Date(m[3]?parseInt(m[3]):yr,mo,parseInt(m[2]));}
+    else if(m[3]&&m[3].length===4)d=new Date(parseInt(m[3]),parseInt(m[1])-1,parseInt(m[2]));
+    else if(m[3])d=new Date(2000+parseInt(m[3]),parseInt(m[1])-1,parseInt(m[2]));
+    else d=new Date(yr,parseInt(m[1])-1,parseInt(m[2]));
+    if(d>now)d.setFullYear(d.getFullYear()-1);
+    const days=Math.floor((now-d)/(86400000));
+    if(days<0||days>730)continue;
+    if(days<14)return days+' days ago';
+    if(days<60)return Math.floor(days/7)+' weeks ago';
+    return Math.floor(days/30)+' months ago';
+  }return null;
+}
 function startEncounterFromPrep(patient){
   activePatient=patient;
   const pImgs=prepImages[patient.id]||[];
@@ -1351,7 +1375,8 @@ function startEncounterFromPrep(patient){
   // Build structured pre-fill from prep agent structured fields
   const s=patient.structured||{};
   if(s.history&&s.history.trim()&&!s.history.toLowerCase().startsWith('no ')){
-    prefill+='LAST ASSESSMENT & PLAN:\n'+s.history.trim()+'\n\n';
+    const elapsed=parseElapsed(s.history);
+    prefill+='LAST ASSESSMENT & PLAN'+(elapsed?' ('+elapsed+')':'')+' :\n'+s.history.trim()+'\n\n';
   }
   if(s.imaging&&s.imaging.trim()&&!s.imaging.toLowerCase().startsWith('no ')){
     prefill+='IMAGING:\n'+s.imaging.trim()+'\n\n';
@@ -1834,6 +1859,28 @@ function saveBackToCase(){
   if(b){const o=b.innerHTML;b.innerHTML="✅ Saved!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}
 }
 
+function saveCurrentCase(){
+  const note=state.editing?state.editText:state.noteText;
+  if(!note)return;
+  const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
+  const proc=pm?pm[1].slice(0,70).trim():"Case";
+  const nt=state.nt||"clinic";
+  const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:state.billRaw||"",dict:state.text||""};
+  // Check if this case already exists (was auto-saved during processCase)
+  const existing=state.cases.find(c=>c.note===note||c.notes?.some(n=>n.note===note));
+  if(existing){
+    // Re-save with latest edits
+    const cases=state.cases.map(c=>{if(c.id!==existing.id)return c;const notes=(c.notes||[]).map(n=>n.note===note?{...n,note:state.editing?state.editText:note,billRaw:state.billRaw||n.billRaw}:n);return stampCase({...c,note:state.editing?state.editText:c.note,notes});});
+    lsS(SK,cases);state.cases=cases;
+  }else{
+    const entry=stampCase({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:state.text||"",note:note,billRaw:state.billRaw||"",notes:[noteEntry]});
+    const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);state.cases=cases;
+  }
+  if(serverReachable)syncCases();
+  const b=document.getElementById('saveCaseBtn');
+  if(b){const o=b.innerHTML;b.innerHTML="✅ Saved!";b.style.background="#059669";setTimeout(()=>{if(b){b.innerHTML=o;b.style.background="";}},2000);}
+}
+
 // ---- NOTE RENDERING ----
 function hlM(t){return t.replace(/\*{3}ASSUMED\*{3}\s*/g,'<span class="ma" onclick="this.remove()">ASSUMED</span> ').replace(/\*{3}IMPLANT\*{3}\s*/g,'<span class="mi" onclick="this.remove()">IMPLANT</span> ').replace(/\*{3}ADDED\*{3}\s*/g,'<span class="md2">ADDED</span> ').replace(/\*\*([^*]+)\*\*/g,'<strong style="color:#f1f5f9">$1</strong>');}
 function renderNote(el,text){
@@ -2155,7 +2202,7 @@ function render(){
       if(scribeRecording){
         const liveLines=_liveTranscript.map(l=>esc(l)).join('<br>');
         const interim=_liveInterim?`<span style="color:#64748b;font-style:italic">${esc(_liveInterim)}</span>`:'';
-        h+=`<div style="text-align:center;margin:16px 0"><div style="font-size:28px;font-weight:300;font-variant-numeric:tabular-nums;color:#fff;margin-bottom:12px;animation:pulse 1.5s ease-in-out infinite">${scribeTimerDisplay()}</div>`;
+        h+=`<div style="text-align:center;margin:16px 0"><div id="scribeTimer" style="font-size:28px;font-weight:300;font-variant-numeric:tabular-nums;color:#fff;margin-bottom:12px;animation:pulse 1.5s ease-in-out infinite">${scribeTimerDisplay()}</div>`;
         h+=`<div style="text-align:left;max-height:200px;overflow-y:auto;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.6;color:#e2e8f0;font-family:monospace" id="liveTranscriptBox">${liveLines}${liveLines&&interim?'<br>':''}${interim||'<span style="color:#475569">Listening...</span>'}</div>`;
         h+=`<div style="display:flex;gap:16px;justify-content:center"><button onclick="scribeStopRec()" style="width:72px;height:72px;border-radius:50%;border:3px solid #64748b;background:rgba(100,116,139,0.2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="Cancel"><div style="width:24px;height:24px;background:#94a3b8;border-radius:4px"></div></button><button onclick="scribeDoneRec()" style="width:72px;height:72px;border-radius:50%;border:3px solid #22c55e;background:rgba(34,197,94,0.2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="Done — extract"><svg width="32" height="32" viewBox="0 0 24 24" fill="#22c55e"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></button></div><div style="display:flex;gap:16px;justify-content:center;margin-top:6px"><span style="font-size:10px;color:#94a3b8">Cancel</span><span style="font-size:10px;color:#86efac">Done</span></div></div>`;
       }else if(scribeProcessing){
@@ -2292,7 +2339,7 @@ function render(){
     if(s.noteText){
       const _mc=countMarkers(s.editing?s.editText:s.noteText);
       const _copyLabel=_mc>0?`📋 Copy → EMR (${_mc} marked)`:`📋 Copy → EMR ✓`;
-      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">${_copyLabel}</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button></div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:10px"><button id="copyEmrH" class="big" style="background:linear-gradient(135deg,#1d4ed8,#2563eb);flex:2" onclick="copyHTML(state.editing?state.editText:state.noteText,'copyEmrH')">${_copyLabel}</button><button id="copyAgent" class="btn" style="background:linear-gradient(135deg,#059669,#10b981);padding:14px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff" onclick="copyForAgent('copyAgent')">🤖 Agent</button><button id="copyEmrP" class="btn" style="background:#334155;padding:14px 12px;border-radius:12px;font-size:12px" onclick="copyPlain(state.editing?state.editText:state.noteText,'copyEmrP')">Plain</button><button id="saveCaseBtn" class="btn" style="background:#b45309;padding:14px 12px;border-radius:12px;font-size:12px;font-weight:700" onclick="saveCurrentCase()">💾 Save</button></div>`;
       h+=`<div class="card" style="border-left:4px solid #3b82f6"><div class="card-h"><span class="title">📋 Note</span><div style="display:flex;gap:6px">`;
       if(_mc>0)h+=`<button class="btn" style="background:#b45309;font-size:10px" onclick="stripMarkers()">Strip ${_mc}</button>`;
       if(!s.editing)h+=`<button class="btn" style="background:#334155" onclick="state.editText=state.noteText;state.editing=true;render()">✏️</button>`;
