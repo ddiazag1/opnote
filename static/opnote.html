@@ -601,7 +601,7 @@ async function scribeStartRec(){
     ct.sessionStopped=()=>{};
     await ct.startTranscribingAsync();
     _speechRecognizer=ct;
-    scribeRecording=true;scribeStartTime=Date.now();
+    scribeRecording=true;scribeStartTime=Date.now();prepPanelOpen=false;
     scribeTimerInterval=setInterval(()=>{const el=document.getElementById('scribeTimer');if(el){const sec=Math.floor((Date.now()-scribeStartTime)/1000);el.textContent=Math.floor(sec/60)+':'+(sec%60<10?'0':'')+sec%60;}else{render();}},1000);
     try{if('wakeLock' in navigator)scribeWakeLock=await navigator.wakeLock.request('screen');}catch{}
     // Keep audio context alive on mobile: inaudible oscillator + silent audio element
@@ -1739,6 +1739,8 @@ async function processCase(){
       lsS(SK,cases);setState({cases});    }else{
       const entry=stampCase({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:text,note:note,billRaw:state.billRaw||"",notes:[noteEntry]});
       const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});    }
+    // Force immediate server sync
+    if(serverReachable)syncCases();
     // Case saved — now safe to delete the source audio recording
     if(_pendingAudioDeleteId){try{await deleteAudioRec(_pendingAudioDeleteId);savedAudioRecs=await getAllAudioRecs();_pendingAudioDeleteId=null;}catch{}}
   }catch(e){setState({err:e.message,phase:""});}
