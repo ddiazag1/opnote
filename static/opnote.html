@@ -1373,7 +1373,10 @@ function startEncounterFromPrep(patient){
   docImages=pImgs.filter(i=>i.category==='note').map(i=>({base64:i.base64,mimeType:i.mimeType,name:i.name,ocrText:i.ocrText||''}));
   const ocrTexts=pImgs.filter(i=>i.category==='note'&&i.ocrText).map(i=>i.ocrText);
   let prepCtx='';
-  // Build structured prep context (hidden from textarea, injected into API call)
+  // Build prep context: briefing first, then structured fields to supplement
+  if(patient.briefing&&patient.briefing.trim()){
+    prepCtx+=patient.briefing.trim()+'\n\n';
+  }
   const s=patient.structured||{};
   if(s.history&&s.history.trim()&&!s.history.toLowerCase().startsWith('no ')){
     const elapsed=parseElapsed(s.history);
