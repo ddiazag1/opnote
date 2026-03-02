@@ -940,6 +940,27 @@ async def patch_prep(patient_id: str, request: Request):
     return {"ok": True}
 
 
+@app.delete("/prep")
+async def delete_prep_by_date(request: Request):
+    body = await request.json()
+    date_str = body.get("date")
+    if not date_str:
+        return JSONResponse({"error": "date required"}, status_code=400)
+    tbl = get_prep_table()
+    count = 0
+    if tbl:
+        entities = list(tbl.query_entities(f"PartitionKey eq '{date_str}'"))
+        for e in entities:
+            tbl.delete_entity(e["PartitionKey"], e["RowKey"])
+            count += 1
+    else:
+        keys = [k for k in _prep_mem if k.startswith(date_str + "_")]
+        for k in keys:
+            del _prep_mem[k]
+            count += 1
+    return {"ok": True, "deleted": count}
+
+
 @app.post("/prep/parse")
 async def parse_schedule(request: Request):
     body = await request.json()
