@@ -1046,9 +1046,16 @@ function getP2(){return getPrompt('p2_billing');}
 
 const SMART_QS={operative:[{q:"Estimated blood loss?",def:"Minimal"},{q:"Was neuromonitoring used?",def:"No neuromonitoring utilized"}],clinic:[],consult:[],progress:[]};
 
+// ---- DRAFT PERSISTENCE (survives refresh, auto-expires after 5h) ----
+const DRAFT_KEY='opnote-draft';const DRAFT_TTL=5*60*60*1000;
+function saveDraft(t,ctx){try{const d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'{}');d.t=t;d.ts=Date.now();if(ctx!==undefined)d.ctx=ctx;localStorage.setItem(DRAFT_KEY,JSON.stringify(d));}catch{}}
+function loadDraft(){try{const d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(d&&(Date.now()-(d.ts||0))<DRAFT_TTL)return d;localStorage.removeItem(DRAFT_KEY);return null;}catch{return null;}}
+function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch{}}
+
 // ---- STATE ----
+const _d=loadDraft();
 let state={
-  view:"input",text:"",nt:"clinic",clinicVisit:"followup",clinicPt:"established",
+  view:"input",text:(_d&&_d.t)||"",nt:"clinic",clinicVisit:"followup",clinicPt:"established",
   noteText:"",billRaw:"",gaps:[],flags:[],financial:null,
   billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
@@ -1056,9 +1063,9 @@ let state={
   ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
   showSettings:false,editing:false,editText:"",_gc:{},_qc:{},
   billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:"",verifyRVU:"",
-  tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:"",_draftId:null,_prepContext:""
+  tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:"",_draftId:null,_prepContext:(_d&&_d.ctx)||""
 };
-function setState(p){Object.assign(state,p);const ae=document.activeElement;if(ae&&ae.id==='mainInput'&&!p.view&&!p.phase&&!p.err){state.text=ae.value;return;}render();}
+function setState(p){Object.assign(state,p);if('text' in p||'_prepContext' in p)saveDraft(state.text,state._prepContext);const ae=document.activeElement;if(ae&&ae.id==='mainInput'&&!p.view&&!p.phase&&!p.err){state.text=ae.value;saveDraft(ae.value);return;}render();}
 
 // ---- PHI STATE (local only, never sent to API) ----
 let phiState={name:'',dob:'',mrn:''};
@@ -1731,6 +1738,7 @@ async function processCase(){
     if(!note.trim())throw new Error("Note failed — add more detail.");
     const tNote=Date.now();
     const smartQs=(SMART_QS[nt]||[]).filter(sq=>!questions.some(q=>q.q.toLowerCase().includes(sq.q.split(" ").slice(0,3).join(" ").toLowerCase())));
+    clearDraft();
     setState({noteText:note,workup:wu,questions:[...questions,...smartQs.map(sq=>({q:sq.q,def:sq.def}))],convo:msgs,phase:"billing",tNote,_sysPrompt:sysPrompt});
     try{
       const{txt:bRaw}=await callC([...msgs,{role:"assistant",content:noteRaw},{role:"user",content:getP2()}],2,sysPrompt);
@@ -2283,8 +2291,8 @@ function render(){
     }
     if(s._draftId)h+=`<div style="background:#7c3aed20;border:1px solid #7c3aed;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#a78bfa">📸 Draft loaded — add context above then process <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({_draftId:null,text:''})">✕</button></div>`;
     if(s._prepContext){h+=`<div style="background:#1e3a5f20;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#60a5fa;cursor:pointer" onclick="this.querySelector('.pc-body').style.display=this.querySelector('.pc-body').style.display==='none'?'block':'none';this.querySelector('.pc-arrow').textContent=this.querySelector('.pc-body').style.display==='none'?'▶':'▼'"><div style="display:flex;justify-content:space-between;align-items:center"><span><span class="pc-arrow">▶</span> 📋 Chart data loaded — tap to view</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="event.stopPropagation();setState({_prepContext:''})">✕</button></div><div class="pc-body" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #1e3a5f;color:#94a3b8;white-space:pre-wrap;font-size:11px;line-height:1.5;max-height:300px;overflow-y:auto;cursor:text" onclick="event.stopPropagation()">${esc(s._prepContext)}</div></div>`;}
-    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="${s._prepContext?'Dictate or type today\'s encounter...':'Dictate, type, or paste...'}" oninput="state.text=this.value">${esc(s.text)}</textarea>`;
-    if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';render()">Clear</button></div>`;}
+    h+=`<textarea class="ta" id="mainInput" rows="8" placeholder="${s._prepContext?'Dictate or type today\'s encounter...':'Dictate, type, or paste...'}" oninput="state.text=this.value;saveDraft(this.value)">${esc(s.text)}</textarea>`;
+    if(s.text.trim()){const wc=s.text.trim().split(/\s+/).length;h+=`<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:#475569">${wc}w</span><button style="font-size:11px;color:#475569;background:none;border:none" onclick="state.text='';clearDraft();render()">Clear</button></div>`;}
     if(s.linkedTo){const lc=s.cases.find(c=>c.id===s.linkedTo);if(lc)h+=`<div style="background:#1e3a5f30;border:1px solid #1e3a5f;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#60a5fa">🔗 Linked to: ${esc(lc.proc)} <button style="font-size:11px;color:#475569;background:none;border:none;float:right" onclick="setState({linkedTo:null})">✕</button></div>`;}
     h+=`<button id="processBtn" class="big" style="background:${!s.text.trim()?"#1e293b":"linear-gradient(135deg,#1d4ed8,#2563eb)"};margin-top:10px;opacity:${!s.text.trim()?0.4:1}" onclick="${s._draftId?"processDraftAsCase()":"processCase()"}" ${!s.text.trim()||isL?"disabled":""}>⚡ ${s._draftId?"Process Draft":"Process Case"}</button>`;
     if(s.err)h+=`<div class="err"><div>${esc(s.err)}</div></div>`;
