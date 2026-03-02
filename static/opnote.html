@@ -835,6 +835,7 @@ sys_rules:`RULES:
 - NEVER fabricate specific calendar dates for treatments. Use "per patient report" instead of invented dates.
 - NEVER put billing codes/CPT/RVU in the clinical note body. Billing goes ONLY in separate billing analysis.
 - First line = clinical content. No preamble.
+- PRIOR CLINICAL CONTEXT: If "PRIOR CLINICAL CONTEXT" or "SURGICAL CONTEXT" is provided before the dictation, you MUST use ALL of it. Include full imaging impressions (not summaries), reference prior diagnoses, and incorporate medications/problems. This data was pulled from the patient's chart for this visit.
 - OPERATIVE NOTES must include "SURGEON: {SURGEON}" and "ASSISTANTS: None" (unless specified).
 - OPERATIVE NOTES ONLY: Do NOT include "ATTENDING:" line. Only use "SURGEON: {SURGEON}". Do NOT include ATTENDING or SURGEON lines in clinic/consult/progress notes.
 WRITING STYLE (ANTI-AI DETECTION):
@@ -883,6 +884,12 @@ sys_clinic:`CLINIC NOTE RULES:
   This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
 - ALLERGIES: Do NOT include an ALLERGIES section in the note. Allergies are documented elsewhere in the EMR and should not be duplicated in the clinic note.
 - CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. Do NOT list every medication — summarize as category counts (e.g. "antihypertensives x2, statin, gabapentin 300mg TID, aspirin 81mg") highlighting only pain meds, anticoagulants, and neuro-relevant medications by name/dose. If not dictated: "CURRENT MEDICATIONS: Per chart review."
+- INCORPORATING PRIOR CLINICAL CONTEXT: When "PRIOR CLINICAL CONTEXT (from chart review)" is provided, you MUST incorporate ALL of it into the note:
+  * IMAGING data (MRI, CT, X-ray, EMG/NCS) → Include the FULL impression/findings in the HPI and reference in Assessment. Do NOT summarize to one line — include the radiologist's complete impression verbatim or near-verbatim. Example: "MRI lumbar spine 01/15/2026: L4-5 large left paracentral disc herniation with inferior migration, moderate central stenosis, severe left lateral recess stenosis with compression of the traversing L5 nerve root."
+  * LAST ASSESSMENT & PLAN → Reference prior visit findings, prior recommendations, and what was planned
+  * MEDICATIONS → Use in current medications section
+  * PROBLEMS → Use in PMH section
+  This chart data was pulled specifically for this patient. Ignoring it produces an incomplete note.
 - ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
