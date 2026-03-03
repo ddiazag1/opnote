@@ -1004,7 +1004,6 @@ async def get_cases():
             cases.append(c)
         except Exception:
             pass
-    cases = [_redact_case(c, i + 1) for i, c in enumerate(cases)]
     return {"cases": cases}
 
 
@@ -1052,7 +1051,6 @@ async def sync_cases(request: Request):
         except Exception:
             pass
 
-    merged = [_redact_case(c, i + 1) for i, c in enumerate(merged)]
     return {"cases": merged}
 
 
