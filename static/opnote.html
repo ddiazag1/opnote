@@ -1754,6 +1754,22 @@ async function processCase(){
     const smartQs=(SMART_QS[nt]||[]).filter(sq=>!questions.some(q=>q.q.toLowerCase().includes(sq.q.split(" ").slice(0,3).join(" ").toLowerCase())));
     clearDraft();
     setState({noteText:note,workup:wu,questions:[...questions,...smartQs.map(sq=>({q:sq.q,def:sq.def}))],convo:msgs,phase:"billing",tNote,_sysPrompt:sysPrompt});
+    // Save case IMMEDIATELY after note generation (before billing)
+    const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
+    const proc=pm?pm[1].slice(0,70).trim():"Case";
+    const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:"",dict:text};
+    let _savedCaseId=null;
+    if(state.linkedTo){
+      _savedCaseId=state.linkedTo;
+      const cases=state.cases.map(c=>{if(c.id!==state.linkedTo)return c;const notes=c.notes?[...c.notes]:[{type:typeCat(c.cat)==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];notes.push(noteEntry);return stampCase({...c,notes});});
+      lsS(SK,cases);setState({cases});
+    }else{
+      const entry=stampCase({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:text,note:note,billRaw:"",notes:[noteEntry]});
+      _savedCaseId=entry.id;
+      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});
+    }
+    if(serverReachable)syncCases();
+    // Now run billing and update the saved case when done
     try{
       const{txt:bRaw}=await callC([...msgs,{role:"assistant",content:noteRaw},{role:"user",content:getP2()}],2,sysPrompt);
       const sec=parseBillFull(bRaw);
@@ -1761,18 +1777,17 @@ async function processCase(){
       if(updNote!==state.noteText)state.noteText=updNote;
       const bv=validateBilling(sec.codes,state.noteText);
       setState({billRaw:bRaw,billCodes:sec.codes,billMod:sec.modifiers,billICD:sec.icd,billBundle:sec.bundling,billPreauth:sec.preauth,billMDM:sec.mdm,gaps:parseGaps(sec.gaps),flags:parseFlags(sec.flags),financial:parseFinancial(sec.financial),billingValidation:bv,phase:"done"});
+      // Update saved case with billing data
+      if(_savedCaseId){
+        const cases=state.cases.map(c=>{
+          if(c.id!==_savedCaseId)return c;
+          const updatedNotes=[...(c.notes||[])];
+          if(updatedNotes.length>0)updatedNotes[updatedNotes.length-1].billRaw=bRaw;
+          return stampCase({...c,billRaw:bRaw,notes:updatedNotes});
+        });
+        lsS(SK,cases);setState({cases});
+      }
     }catch(be){setState({err:"Billing failed: "+be.message,phase:"done"});}
-    // Save case
-    const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
-    const proc=pm?pm[1].slice(0,70).trim():"Case";
-    const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:state.billRaw||"",dict:text};
-    if(state.linkedTo){
-      const cases=state.cases.map(c=>{if(c.id!==state.linkedTo)return c;const notes=c.notes?[...c.notes]:[{type:typeCat(c.cat)==="Operative"?"operative":"clinic",note:c.note||"",billRaw:c.billRaw||"",dict:c.dict||""}];notes.push(noteEntry);return stampCase({...c,notes});});
-      lsS(SK,cases);setState({cases});    }else{
-      const entry=stampCase({id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),proc,cat:typeCat(nt),dict:text,note:note,billRaw:state.billRaw||"",notes:[noteEntry]});
-      const cases=[entry,...state.cases].slice(0,200);lsS(SK,cases);setState({cases});    }
-    // Force immediate server sync
-    if(serverReachable)syncCases();
     // Case saved — now safe to delete the source audio recording
     if(_pendingAudioDeleteId){try{await deleteAudioRec(_pendingAudioDeleteId);savedAudioRecs=await getAllAudioRecs();_pendingAudioDeleteId=null;}catch{}}
   }catch(e){setState({err:e.message,phase:""});}
