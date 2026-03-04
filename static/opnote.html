@@ -666,7 +666,9 @@ function _applyScribeResult(data,et,transcript){
   scribeProcessing=false;scribeStatus='';scribeOpen=false;
   _liveTranscript=[];
   render();
-  scribeToast('Transcript ready!',3000);
+  // Auto-process: generate note immediately after extraction
+  if(state.text&&state.text.trim()){processCase();}
+  else{scribeToast('Transcript ready!',3000);}
 }
 async function processAudioRec(id){
   const recs=await getAllAudioRecs();const rec=recs.find(r=>r.id===id);
@@ -2248,11 +2250,16 @@ function render(){
     if(scribeOpen){
       h+=`<div class="card-b">`;
       if(scribeRecording){
+        // Fullscreen recording overlay — tap anywhere to stop & process
         const liveLines=_liveTranscript.map(l=>esc(l)).join('<br>');
-        const interim=_liveInterim?`<span style="color:#64748b;font-style:italic">${esc(_liveInterim)}</span>`:'';
-        h+=`<div style="text-align:center;margin:16px 0"><div id="scribeTimer" style="font-size:28px;font-weight:300;font-variant-numeric:tabular-nums;color:#fff;margin-bottom:12px;animation:pulse 1.5s ease-in-out infinite">${scribeTimerDisplay()}</div>`;
-        h+=`<div style="text-align:left;max-height:200px;overflow-y:auto;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.6;color:#e2e8f0;font-family:monospace" id="liveTranscriptBox">${liveLines}${liveLines&&interim?'<br>':''}${interim||'<span style="color:#475569">Listening...</span>'}</div>`;
-        h+=`<div style="display:flex;gap:16px;justify-content:center"><button onclick="scribeStopRec()" style="width:72px;height:72px;border-radius:50%;border:3px solid #64748b;background:rgba(100,116,139,0.2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="Cancel"><div style="width:24px;height:24px;background:#94a3b8;border-radius:4px"></div></button><button onclick="scribeDoneRec()" style="width:72px;height:72px;border-radius:50%;border:3px solid #22c55e;background:rgba(34,197,94,0.2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="Done — extract"><svg width="32" height="32" viewBox="0 0 24 24" fill="#22c55e"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></button></div><div style="display:flex;gap:16px;justify-content:center;margin-top:6px"><span style="font-size:10px;color:#94a3b8">Cancel</span><span style="font-size:10px;color:#86efac">Done</span></div></div>`;
+        const interim=_liveInterim?`<span style="color:#334155;font-style:italic">${esc(_liveInterim)}</span>`:'';
+        app.innerHTML=`<div id="recOverlay" onclick="scribeDoneRec()" style="position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:24px">
+          <div style="flex:0;margin-bottom:24px"><div style="width:16px;height:16px;background:#ef4444;border-radius:50%;animation:pulse 1.2s ease-in-out infinite"></div></div>
+          <div id="scribeTimer" style="font-size:56px;font-weight:200;font-variant-numeric:tabular-nums;color:#fff;margin-bottom:32px;letter-spacing:4px">${scribeTimerDisplay()}</div>
+          <div style="width:100%;max-width:500px;flex:1;max-height:40vh;overflow-y:auto;padding:16px;font-size:13px;line-height:1.8;color:#475569;font-family:monospace;text-align:left">${liveLines}${liveLines&&interim?'<br>':''}${interim}</div>
+          <div style="margin-top:auto;padding-bottom:max(40px,env(safe-area-inset-bottom));color:#334155;font-size:14px;font-weight:600;letter-spacing:1px">TAP ANYWHERE TO FINISH</div>
+        </div>`;
+        return;
       }else if(scribeProcessing){
         h+=`<div style="text-align:center;padding:20px"><div style="font-size:14px;color:#60a5fa;font-weight:600">${esc(scribeStatus||'Processing...')}</div></div>`;
       }else{
