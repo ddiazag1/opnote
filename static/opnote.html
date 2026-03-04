@@ -885,7 +885,10 @@ sys_clinic:`CLINIC NOTE RULES:
 - ALLERGIES: Do NOT include an ALLERGIES section in the note. Allergies are documented elsewhere in the EMR and should not be duplicated in the clinic note.
 - CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. Do NOT list every medication — summarize as category counts (e.g. "antihypertensives x2, statin, gabapentin 300mg TID, aspirin 81mg") highlighting only pain meds, anticoagulants, and neuro-relevant medications by name/dose. If not dictated: "CURRENT MEDICATIONS: Per chart review."
 - INCORPORATING PRIOR CLINICAL CONTEXT: When "PRIOR CLINICAL CONTEXT (from chart review)" is provided, you MUST incorporate ALL of it into the note:
-  * IMAGING data (MRI, CT, X-ray, EMG/NCS) → Include the FULL impression/findings in the HPI and reference in Assessment. Do NOT summarize to one line — include the radiologist's complete impression verbatim or near-verbatim. Example: "MRI lumbar spine 01/15/2026: L4-5 large left paracentral disc herniation with inferior migration, moderate central stenosis, severe left lateral recess stenosis with compression of the traversing L5 nerve root."
+  * IMAGING data (MRI, CT, X-ray, EMG/NCS) → Put ALL imaging in a dedicated IMAGING REVIEW section (NOT in HPI). Include the FULL impression/findings verbatim or near-verbatim with dates. Reference key findings briefly in Assessment. Example section:
+    IMAGING REVIEW:
+    MRI lumbar spine 01/15/2026: L4-5 large left paracentral disc herniation with inferior migration, moderate central stenosis, severe left lateral recess stenosis with compression of the traversing L5 nerve root.
+    CT lumbar spine 01/20/2026: No fracture. Degenerative changes L4-5.
   * LAST ASSESSMENT & PLAN → Reference prior visit findings, prior recommendations, and what was planned
   * MEDICATIONS → Use in current medications section
   * PROBLEMS → Use in PMH section
@@ -920,11 +923,22 @@ sys_clinic:`CLINIC NOTE RULES:
 - FOLLOW-UP INTERVAL MATH: TODAY'S DATE is provided at the top of the input. When prior context includes a dated visit with a follow-up interval (e.g. "2 week follow up" from a note dated 01/05/2026), calculate the ACTUAL elapsed time from that prior visit date to TODAY'S DATE and use it in the note. Example: if prior note from 01/05/2026 said "2 week follow up" and today is 03/02/2026, write "~8 week follow up" (the real elapsed time), NOT "2 week follow up". Similarly for surgery dates — calculate actual weeks/months post-op from the surgery date to today.
 - Focus Q:/DEFAULT: on: duration of conservative treatments, imaging date, and follow-up interval ONLY.
 - Include PAST MEDICAL/SURGICAL HISTORY. Include significant PMH (diabetes, cardiac, bleeding disorders, prior cancers, neurological conditions). For prior surgeries, include dates when mentioned (e.g. "L4-5 laminectomy 2019", "ACDF C5-6 March 2023"). For imaging, include the date (e.g. "MRI lumbar spine 01/15/2026"). If not dictated: "PMH: Per chart review" not "ASSUMED unremarkable".
-- Include FAMILY HISTORY if new patient. If not dictated: "FAMILY HISTORY: Noncontributory"
-- Include SOCIAL HISTORY if new patient. If not dictated: "SOCIAL HISTORY: Per chart review. Smoking status documented."`,
+- Include FAMILY HISTORY if new patient. If not dictated: "FAMILY HISTORY: Noncontributory". NEVER include Family History twice — if it appears in prior clinical context, use that data for the section, do not create a second one.
+- Include SOCIAL HISTORY if new patient. If not dictated: "SOCIAL HISTORY: Per chart review. Smoking status documented.". NEVER include Social History twice — if it appears in prior clinical context, use that data for the section, do not create a second one.
+- DUPLICATE SECTION RULE: NEVER output the same section header twice in a note. If data for a section comes from both dictation and prior context, MERGE into ONE section.`,
 sys_progress:`PROGRESS NOTE RULES:
 - Support SOAP structure: Subjective, Objective, Assessment, Plan.
-- If dictation is structured as SOAP, follow that format.`,
+- If dictation is structured as SOAP, follow that format.
+POST-OPERATIVE PROGRESS NOTE RULES:
+- If dictation mentions POD (post-operative day), s/p (status post), or references a recent surgery, this is a POST-OP progress note. The patient ALREADY HAD surgery. Do NOT recommend surgery in the plan.
+- SUBJECTIVE: POD#, pain level, ambulation, diet, bowel function, neuro status per patient report.
+- OBJECTIVE: Vitals, I/O, wound check, neuro exam, drain output if applicable.
+- ASSESSMENT: "[Age] [M/F] POD# s/p [procedure] at [level]. Doing well / progressing as expected / [complication]."
+- PLAN: Post-op care: pain management, activity restrictions, DVT prophylaxis, wound care, drain management, diet advancement, PT/OT, discharge criteria, follow-up timing. NEVER recommend the surgery they already had.
+- CRITICAL: When dictation says "POD1" or "post-op day 1" etc., the surgery is DONE. The plan is RECOVERY, not surgical intervention.
+INPATIENT CONSULT PROGRESS NOTE:
+- If following up on a consult, reference the original consult findings and update with interval changes.
+- Plan should reflect ongoing management recommendations, not re-recommend the same workup.`,
 sys_codes:`CODE-SPECIFIC:
 1. REGION from UPPERMOST level: C=22600, T=22610, L=22612. 22614=each additional.
 2. SEGMENTS=vertebrae minus 1. Instrumentation: 22840(1-2), 22842(3-6), 22843(7-12), 22844(13+).
