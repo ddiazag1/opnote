@@ -1008,6 +1008,7 @@ sys_rules:`RULES:
 - NEVER invent patient occupation, employer, specific activities, hobbies, or lifestyle details not stated in dictation. Only assume CLINICAL details (exam findings, durations, dates).
 - NEVER fabricate specific calendar dates for treatments. Use "per patient report" instead of invented dates.
 - NEVER put billing codes/CPT/RVU in the clinical note body. Billing goes ONLY in separate billing analysis.
+- CLINIC NOTES: NEVER use separate "ASSESSMENT:" and "PLAN:" sections. ALWAYS use a single combined "ASSESSMENT AND PLAN:" section. Each diagnosis gets its own numbered entry with ICD-10 code, followed by lettered sub-items for the plan. This is NON-NEGOTIABLE.
 - First line = clinical content. No preamble.
 - PRIOR CLINICAL CONTEXT: If "PRIOR CLINICAL CONTEXT" or "SURGICAL CONTEXT" is provided before the dictation, you MUST use ALL of it. Include full imaging impressions (not summaries), reference prior diagnoses, and incorporate medications/problems. This data was pulled from the patient's chart for this visit.
 - OPERATIVE NOTES must include "SURGEON: {SURGEON}" and "ASSISTANTS: None" (unless specified).
@@ -1067,10 +1068,11 @@ sys_clinic:`CLINIC NOTE RULES:
   * MEDICATIONS → Use in current medications section
   * PROBLEMS → Use in PMH section
   This chart data was pulled specifically for this patient. Ignoring it produces an incomplete note.
-- COMBINED ASSESSMENT AND PLAN: Use a single "ASSESSMENT AND PLAN" section (NOT separate Assessment and Plan sections). Each numbered diagnosis includes its ICD-10 code AND its specific plan items grouped underneath. Format:
+- CRITICAL — ASSESSMENT AND PLAN FORMAT: You MUST use a SINGLE combined section header "ASSESSMENT AND PLAN:" — NEVER separate "ASSESSMENT:" and "PLAN:" headers. NEVER. Each diagnosis is a numbered entry with its ICD-10 code, a brief clinical summary, then INDENTED lettered plan items for THAT diagnosis underneath. Like this:
+
   ASSESSMENT AND PLAN:
-  1. Lumbar spinal stenosis (M48.06) at L4-5 — [Age] [M/F] w/ [duration] [symptom]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate.
-     a. Discussed diagnosis, natural history, and treatment options
+  1. Lumbar spinal stenosis (M48.06) at L4-5 — 55M w/ 6mo radiculopathy. MRI confirms severe stenosis. Failed PT and ESI. Surgical candidate.
+     a. Discussed diagnosis, natural history, treatment options
      b. Recommend L4-5 laminectomy
      c. Pre-op: labs, cardiac clearance
      d. RTC for surgery scheduling
@@ -1078,7 +1080,16 @@ sys_clinic:`CLINIC NOTE RULES:
      a. Continue gabapentin 300mg TID
      b. Repeat MRI cervical spine in 6 months if symptoms progress
      c. RTC 6 months
-  Every diagnosis MUST have its ICD-10 code in parentheses. Every diagnosis MUST have at least one plan item. This is MANDATORY.
+
+  WRONG (DO NOT DO THIS):
+  ASSESSMENT:
+  1. Lumbar spinal stenosis...
+  2. Cervical radiculopathy...
+  PLAN:
+  1. Discussed diagnosis...
+  2. Continue gabapentin...
+
+  The plan items MUST be nested under their diagnosis, NOT in a separate section. This is NON-NEGOTIABLE.
 - ASSESSMENT PHRASING: Each diagnosis line should read like a surgeon's impression, NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
@@ -1275,18 +1286,29 @@ sys_clinic:`CLINIC NOTE RULES:
   If findings in HPI suggest abnormality, adjust assumed exam to MATCH (e.g. patient reports hearing loss → "Left TM: retracted with effusion ***ASSUMED FROM HPI***").
   For red flags (airway compromise, rapidly enlarging mass, stridor): NEVER auto-fill normals — use ***NOT EXAMINED — DOCUMENT***.
 - Documentation: HPI/PMH/PSH/allergies/medications/SH/FH/ROS personally reviewed by {SURGEON}, MD
-- COMBINED ASSESSMENT AND PLAN: Use a single "ASSESSMENT AND PLAN" section (NOT separate Assessment and Plan sections). Each numbered diagnosis includes its ICD-10 code AND its specific plan items grouped underneath. Format:
+- CRITICAL — ASSESSMENT AND PLAN FORMAT: You MUST use a SINGLE combined section header "ASSESSMENT AND PLAN:" — NEVER separate "ASSESSMENT:" and "PLAN:" headers. NEVER. Each diagnosis is a numbered entry with its ICD-10 code, a brief clinical summary, then INDENTED lettered plan items for THAT diagnosis underneath. Like this:
+
   ASSESSMENT AND PLAN:
-  1. Obstructive sleep apnea (G47.33) — [Age] [M/F] w/ [symptoms]. Sleep study confirms [findings].
-     a. Order polysomnography
-     b. Insurance pre-authorization for CPAP
-     c. Weight loss counseling, sleep hygiene
-     d. RTC after sleep study results
-  2. Chronic otitis media, left (H66.91) — recurrent infections, failed oral antibiotics.
+  1. Obstructive sleep apnea (G47.33) — 45M w/ AHI 30, BMI 35, CPAP intolerance.
+     a. Recommend Inspire therapy evaluation
+     b. Drug-induced sleep endoscopy for candidacy assessment
+     c. Insurance pre-authorization for Inspire
+     d. Weight loss counseling
+  2. Chronic otitis media, left (H66.91) — persistent drainage, hearing loss, failed oral abx.
      a. Ciprofloxacin/dexamethasone otic drops x 10 days
-     b. Audiogram
-     c. If refractory, discuss myringotomy with PE tube placement
-  Every diagnosis MUST have its ICD-10 code in parentheses. Every diagnosis MUST have at least one plan item. This is MANDATORY.
+     b. Ear culture to guide antibiotic therapy
+     c. Audiogram
+     d. If refractory, discuss myringotomy with PE tube placement
+
+  WRONG (DO NOT DO THIS):
+  ASSESSMENT:
+  1. Chronic otitis media...
+  2. Obstructive sleep apnea...
+  PLAN:
+  1. Prescribed antibiotics...
+  2. Recommend Inspire...
+
+  The plan items MUST be nested under their diagnosis, NOT in a separate section. This is NON-NEGOTIABLE.
 - ASSESSMENT PHRASING: Each diagnosis line should read like a surgeon's impression, NOT "This is a [age]-year-old [gender] who presents with..."
 - Include ROS, PMH/PSH, FAMILY HISTORY (new patient), SOCIAL HISTORY (new patient).
 - Do NOT include billing codes in the note body.
