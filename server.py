@@ -1152,6 +1152,72 @@ async def delete_case(request: Request):
     return {"ok": True}
 
 
+@app.post("/cases/purge")
+async def purge_all_cases():
+    """Hard-delete ALL cases from Azure Table Storage and prep schedule."""
+    tbl = get_cases_table()
+    count = 0
+    if tbl:
+        for e in list(tbl.query_entities("PartitionKey eq 'dan'")):
+            tbl.delete_entity(e["PartitionKey"], e["RowKey"])
+            count += 1
+    else:
+        count = len(_cases_mem)
+        _cases_mem.clear()
+    # Also clear prep schedule
+    ptbl = get_prep_table()
+    prep_count = 0
+    if ptbl:
+        for e in list(ptbl.query_entities(f"PartitionKey eq '{_today_str()}'")):
+            ptbl.delete_entity(e["PartitionKey"], e["RowKey"])
+            prep_count += 1
+    log.info(f"Purged {count} cases, {prep_count} prep entries")
+    return {"ok": True, "purged_cases": count, "purged_prep": prep_count}
+
+
+def _today_str():
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _purge_old_cases():
+    """Delete cases older than 48 hours from Table Storage."""
+    tbl = get_cases_table()
+    if not tbl:
+        return
+    cutoff = time.time() * 1000 - 48 * 60 * 60 * 1000  # 48h in ms (updatedAt is ms)
+    count = 0
+    for e in list(tbl.query_entities("PartitionKey eq 'dan'")):
+        ts = e.get("updatedAt", 0)
+        if ts < cutoff:
+            tbl.delete_entity(e["PartitionKey"], e["RowKey"])
+            count += 1
+    if count:
+        log.info(f"Auto-purged {count} cases older than 48h")
+
+
+def _start_purge_scheduler():
+    """Background thread: runs purge at midnight every day."""
+    from datetime import datetime, timedelta
+    def _loop():
+        while True:
+            now = datetime.now()
+            # Next midnight
+            tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            wait_sec = (tomorrow - now).total_seconds()
+            time.sleep(wait_sec)
+            try:
+                _purge_old_cases()
+            except Exception as ex:
+                log.warning(f"Purge scheduler error: {ex}")
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+    log.info("Case purge scheduler started (48h retention, runs at midnight)")
+
+
+_start_purge_scheduler()
+
+
 @app.get("/cohort")
 async def cohort_page():
     return FileResponse(str(STATIC_DIR / "cohort.html"), media_type="text/html")

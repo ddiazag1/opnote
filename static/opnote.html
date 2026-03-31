@@ -1994,6 +1994,7 @@ function processDraftAsCase(){
   processCase();
 }
 function deleteCase(id){const cases=state.cases.filter(c=>c.id!==id);lsS(SK,cases);setState({cases,selCase:null,view:"cases"});if(serverReachable)authFetch('/cases/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}).catch(()=>{});}
+async function purgeAllCases(){if(!confirm('Delete ALL cases and notes? This cannot be undone.'))return;lsS(SK,[]);setState({cases:[],selCase:null,view:'cases'});if(serverReachable)try{await authFetch('/cases/purge',{method:'POST'});scribeToast('All cases purged');}catch{scribeToast('Local cleared, server purge failed');}else scribeToast('Cases cleared locally');}
 
 function reopenCase(caseId,noteIdx){
   const c=state.cases.find(x=>x.id===caseId);if(!c)return;
@@ -2840,7 +2841,7 @@ function render(){
         h+=`<button class="case-btn" onclick="setState({selCase:state.cases.find(x=>x.id==='${c.id}'),view:'detail',detailNoteIdx:0})"><div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.proc||"Case")}</div><div style="font-size:11px;color:#475569;margin-top:2px">${esc(c.ts||c.date||"")}</div></div><span class="tag" style="background:${tagColor}30;color:${tagColor.replace("1d","60").replace("7c","a8").replace("05","34")}">${c.cat||""}</span></div></button>`;
       }
     });
-    if(s.cases.length)h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button></div>`;
+    if(s.cases.length)h+=`<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="background:#334155;flex:1" onclick="exportCases()">📥 Export</button><button class="btn" style="background:#334155;flex:1" onclick="pickImport()">📤 Import</button><button class="btn" style="background:#7f1d1d;flex:1" onclick="purgeAllCases()">Purge All</button></div>`;
   }
 
   // ---- DETAIL VIEW ----
