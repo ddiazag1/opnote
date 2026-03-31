@@ -590,7 +590,7 @@ async function _getSpeechToken(){
 
 // ---- UNIFIED ENCOUNTER TYPE ----
 let specialty=ls('opnote-specialty','ENT');
-function setSpecialty(s){specialty=s;lsS('opnote-specialty',s);render();}
+function setSpecialty(s){specialty=s;lsS('opnote-specialty',s);const defSn=s==='ENT'?'Merna':'Diaz';state.sn=defSn;lsS('opnote-surgeon',defSn);render();}
 function getSpec(){return specialty;}
 let encounterType='Clinic - Established';
 function encounterToState(et){
@@ -1413,7 +1413,7 @@ let state={
   billCodes:"",billMod:"",billICD:"",billBundle:"",billPreauth:"",billMDM:"",
   workup:[],wuChecked:{},questions:[],qEdits:{},convo:[],phase:"",err:null,
   cases:ls(SK,[]),selCase:null,addend:"",caseTab:"all",
-  ce:ls("opnote-email",""),sn:ls("opnote-surgeon","Diaz"),
+  ce:ls("opnote-email",""),sn:ls("opnote-surgeon",getSpec()==='ENT'?"Merna":"Diaz"),
   showSettings:false,editing:false,editText:"",_gc:{},_qc:{},
   billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:"",verifyRVU:"",
   tStart:null,tNote:null,tCopy:null,linkedTo:null,detailNoteIdx:0,detailAddendText:"",_draftId:null,_prepContext:(_d&&_d.ctx)||""
