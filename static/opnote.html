@@ -1068,6 +1068,7 @@ sys_clinic:`CLINIC NOTE RULES:
   * PROBLEMS → Use in PMH section
   This chart data was pulled specifically for this patient. Ignoring it produces an incomplete note.
 - ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
+- ASSESSMENT ICD-10 CODES: EVERY diagnosis in the Assessment MUST include its ICD-10 code in parentheses inline. Format: "Lumbar spinal stenosis (M48.06) at L4-5" or "Cervical radiculopathy (M54.12), left C6". Number each diagnosis. This is MANDATORY — never omit the ICD-10 code from the assessment.
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
   PHYSICAL EXAMINATION:
@@ -1271,6 +1272,7 @@ sys_clinic:`CLINIC NOTE RULES:
   For red flags (airway compromise, rapidly enlarging mass, stridor): NEVER auto-fill normals — use ***NOT EXAMINED — DOCUMENT***.
 - Documentation: HPI/PMH/PSH/allergies/medications/SH/FH/ROS personally reviewed by {SURGEON}, MD
 - ASSESSMENT PHRASING: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis]. [Imaging/exam confirms]. [Conservative tx status]. [Surgical candidate / continue medical management]."
+- ASSESSMENT ICD-10 CODES: EVERY diagnosis in the Assessment MUST include its ICD-10 code in parentheses inline. Format: "Obstructive sleep apnea (G47.33)" or "Chronic otitis media, left (H66.91)". Number each diagnosis. This is MANDATORY — never omit the ICD-10 code from the assessment.
 - Include ROS, PMH/PSH, FAMILY HISTORY (new patient), SOCIAL HISTORY (new patient).
 - PLAN STRUCTURE FOR SURGICAL CANDIDATES:
   PLAN:
