@@ -465,8 +465,10 @@ Return ONLY valid JSON with this exact schema:
   "patient_info": {{
     "name_mentioned": "string or null",
     "age_mentioned": "string or null"
-  }}
-}}"""
+  }},
+  "cpt_codes": [{{"code": "string", "description": "string", "confidence": "high|medium|low"}}]
+}}
+If the speaker explicitly states CPT codes or procedure names that map to CPT codes, include them in cpt_codes. Also identify procedures from context and map to CPT codes."""
 
 EXTRACTION_PROMPT_OPERATIVE = """\
 You are a clinical data extractor for a neurosurgery practice.
@@ -493,15 +495,81 @@ Return ONLY valid JSON with this exact schema:
   "patient_info": {{
     "name_mentioned": "string or null",
     "age_mentioned": "string or null"
-  }}
-}}"""
+  }},
+  "cpt_codes": [{{"code": "string", "description": "string", "confidence": "high|medium|low"}}]
+}}
+If the speaker explicitly states CPT codes or procedure names that map to CPT codes, include them in cpt_codes. Also identify procedures from context and map to CPT codes."""
+
+EXTRACTION_PROMPT_CLINIC_ENT = """\
+You are a clinical data extractor for an ENT (otolaryngology) practice.
+Extract ONLY factual clinical content from this doctor-patient transcript.
+Output valid JSON only. Do not write a note. Do not add information not discussed.
+Use short phrases not sentences.
+For long encounters, be thorough — capture every clinical fact discussed.
+
+Use precise ENT terminology (tympanic membrane, cholesteatoma, nasal polyps, deviated septum, \
+chronic rhinosinusitis, vocal fold paralysis, thyroid nodule, FESS, septoplasty, tympanoplasty, \
+tonsillectomy, thyroidectomy, audiogram, Lund-Mackay, hearing loss, OSA, etc.)
+
+The encounter type is: {encounter_type}
+
+Return ONLY valid JSON with this exact schema:
+{{
+  "facts": {{
+    "chief_complaint": "string or null",
+    "symptoms": ["short phrase"],
+    "exam_discussed": ["short phrase"],
+    "imaging": ["short phrase"],
+    "assessment": "string or null",
+    "plan": ["short phrase"],
+    "medications": ["short phrase"],
+    "laterality": "left|right|bilateral|null"
+  }},
+  "patient_info": {{
+    "name_mentioned": "string or null",
+    "age_mentioned": "string or null"
+  }},
+  "cpt_codes": [{{"code": "string", "description": "string", "confidence": "high|medium|low"}}]
+}}
+If the speaker explicitly states CPT codes or procedure names that map to CPT codes, include them in cpt_codes. Also identify procedures from context and map to CPT codes."""
+
+EXTRACTION_PROMPT_OPERATIVE_ENT = """\
+You are a clinical data extractor for an ENT (otolaryngology) practice.
+Extract ONLY factual operative content from this surgeon's dictation or recording.
+Output valid JSON only. Do not write a note. Do not add information not discussed.
+Use short phrases not sentences.
+
+Use precise ENT terminology (septoplasty, FESS, tympanoplasty, mastoidectomy, tonsillectomy, \
+thyroidectomy, parotidectomy, laryngoscopy, microdebrider, coblation, NIM, PE tubes, \
+facial nerve, RLN, nerve monitoring, etc.)
+
+The encounter type is: {encounter_type}
+
+Return ONLY valid JSON with this exact schema:
+{{
+  "facts": {{
+    "procedure_performed": "string or null",
+    "approach": "string or null",
+    "findings": ["short phrase"],
+    "implants": ["short phrase"],
+    "ebl": "string or null",
+    "complications": "string or null",
+    "specimens": ["short phrase"]
+  }},
+  "patient_info": {{
+    "name_mentioned": "string or null",
+    "age_mentioned": "string or null"
+  }},
+  "cpt_codes": [{{"code": "string", "description": "string", "confidence": "high|medium|low"}}]
+}}
+If the speaker explicitly states CPT codes or procedure names that map to CPT codes, include them in cpt_codes. Also identify procedures from context and map to CPT codes."""
 
 
 # Formats Azure Speech SDK can read natively (no conversion needed)
 NATIVE_SPEECH_EXTS = {".wav", ".ogg", ".mp3", ".flac"}
 
 
-def transcribe_and_extract_direct(audio_path: str, encounter_type: str) -> tuple[str, dict]:
+def transcribe_and_extract_direct(audio_path: str, encounter_type: str, specialty: str = "NSG") -> tuple[str, dict]:
     """Single GPT-4o call: audio in → structured JSON out. ~15-30s total."""
     # Ensure WAV for reliable audio input
     wav_path = convert_to_wav(audio_path)
@@ -513,7 +581,7 @@ def transcribe_and_extract_direct(audio_path: str, encounter_type: str) -> tuple
         if wav_path and os.path.exists(wav_path):
             os.unlink(wav_path)
 
-    prompt = (EXTRACTION_PROMPT_OPERATIVE if encounter_type == "OpNote" else EXTRACTION_PROMPT_CLINIC).format(encounter_type=encounter_type)
+    prompt = _select_extraction_prompt(encounter_type, specialty).format(encounter_type=encounter_type)
     prompt += '\n\nAlso include a top-level "transcript" field with a clean verbatim transcript of the audio.'
 
     response = oai.chat.completions.create(
@@ -592,12 +660,23 @@ def transcribe_audio(audio_path: str) -> str:
     return "\n".join(lines)
 
 
-def extract_structured(transcript: str, encounter_type: str) -> dict:
+def _select_extraction_prompt(encounter_type: str, specialty: str) -> str:
+    """Select the correct extraction prompt based on encounter type and specialty."""
+    is_operative = encounter_type == "OpNote"
+    is_ent = specialty.upper() == "ENT"
+    if is_operative:
+        return EXTRACTION_PROMPT_OPERATIVE_ENT if is_ent else EXTRACTION_PROMPT_OPERATIVE
+    else:
+        return EXTRACTION_PROMPT_CLINIC_ENT if is_ent else EXTRACTION_PROMPT_CLINIC
+
+
+def extract_structured(transcript: str, encounter_type: str, specialty: str = "NSG") -> dict:
     """Send diarized transcript to GPT-4o, get structured JSON back."""
+    prompt = _select_extraction_prompt(encounter_type, specialty).format(encounter_type=encounter_type)
     response = oai.chat.completions.create(
         model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
         messages=[
-            {"role": "system", "content": (EXTRACTION_PROMPT_OPERATIVE if encounter_type == "OpNote" else EXTRACTION_PROMPT_CLINIC).format(encounter_type=encounter_type)},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": f"Diarized transcript:\n\n{transcript}"},
         ],
         temperature=0.2,
@@ -700,18 +779,21 @@ async def extract(request: Request):
         body = await request.json()
         transcript = body.get("transcript", "")
         encounter_type = body.get("encounter_type", "Clinic - Established")
+        specialty = body.get("specialty", "NSG")
         if not transcript.strip():
             return JSONResponse({"error": "No transcript provided"}, status_code=400)
 
-        extracted = extract_structured(transcript, encounter_type)
+        extracted = extract_structured(transcript, encounter_type, specialty)
 
         eid = uuid.uuid4().hex[:12]
         encounter = {
             "source": "realtime_scribe",
             "encounter_type": encounter_type,
+            "specialty": specialty,
             "raw_transcript": transcript,
             "facts": extracted.get("facts", {}),
             "patient_info": extracted.get("patient_info", {}),
+            "cpt_codes": extracted.get("cpt_codes", []),
             "opnote_nt": ENCOUNTER_TO_NT.get(encounter_type, "clinic"),
             "opnote_visit": ENCOUNTER_TO_VISIT.get(encounter_type, "new"),
             "opnote_pt": ENCOUNTER_TO_PT.get(encounter_type, "new"),
@@ -725,6 +807,7 @@ async def extract(request: Request):
             "opnote_url": f"/opnote?scribe={eid}",
             "facts": redacted["facts"],
             "patient_info": redacted.get("patient_info", {}),
+            "cpt_codes": encounter.get("cpt_codes", []),
             "encounter_type": encounter_type,
         }
     except Exception as e:
@@ -826,6 +909,7 @@ async def get_encounter(encounter_id: str):
 async def transcribe(
     audio: UploadFile = File(...),
     encounter_type: str = Form("Follow-up"),
+    specialty: str = Form("NSG"),
 ):
     # Save uploaded audio to temp file
     suffix = Path(audio.filename or "audio.webm").suffix or ".webm"
@@ -842,7 +926,7 @@ async def transcribe(
         # Fast path: single GPT-4o call with direct audio input
         try:
             log.info("Trying direct GPT-4o audio input (fast path)...")
-            transcript, extracted = transcribe_and_extract_direct(tmp_path, encounter_type)
+            transcript, extracted = transcribe_and_extract_direct(tmp_path, encounter_type, specialty)
             log.info(f"Direct audio done: transcript={len(transcript)} chars")
         except Exception as fast_err:
             log.info(f"Direct audio not supported ({fast_err}), falling back to Azure Speech...")
@@ -862,7 +946,7 @@ async def transcribe(
                     status_code=400,
                 )
             log.info("Sending to GPT-4o for extraction...")
-            extracted = extract_structured(transcript, encounter_type)
+            extracted = extract_structured(transcript, encounter_type, specialty)
             log.info("Extraction complete")
 
         # Step 3: Build encounter record and persist
@@ -870,9 +954,11 @@ async def transcribe(
         encounter = {
             "source": "ambient_scribe",
             "encounter_type": encounter_type,
+            "specialty": specialty,
             "raw_transcript": transcript or "",
             "facts": extracted.get("facts", {}),
             "patient_info": extracted.get("patient_info", {}),
+            "cpt_codes": extracted.get("cpt_codes", []),
             "opnote_nt": ENCOUNTER_TO_NT.get(encounter_type, "clinic"),
             "opnote_visit": ENCOUNTER_TO_VISIT.get(encounter_type, "new"),
             "opnote_pt": ENCOUNTER_TO_PT.get(encounter_type, "new"),
@@ -886,6 +972,7 @@ async def transcribe(
             "opnote_url": f"/opnote?scribe={eid}",
             "facts": redacted["facts"],
             "patient_info": redacted.get("patient_info", {}),
+            "cpt_codes": encounter.get("cpt_codes", []),
             "encounter_type": encounter_type,
         }
     except Exception as e:

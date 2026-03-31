@@ -235,11 +235,81 @@ const MUE_TABLE={
   22510:[1,"P",3],22511:[1,"P",3],22512:[2,"A",3]
 };
 
+// ---- ENT RVU TABLE (2025 Medicare PFS) ----
+const ENT_RVU_TABLE={
+  // Otology
+  69210:0.61,69420:3.86,69421:5.21,69433:2.50,69436:3.61,69631:13.50,69632:14.00,69633:15.00,69635:16.00,69636:17.50,69641:15.50,69642:16.50,69643:17.50,69644:18.50,69645:19.50,69646:20.50,69661:18.00,69662:19.00,69710:10.00,69714:18.50,69715:22.00,69717:20.00,69718:23.50,69930:10.50,
+  // Rhinology
+  30140:1.80,30520:7.46,30801:1.80,30802:2.50,30930:2.97,31237:3.97,31238:5.06,31239:5.42,31240:4.26,31253:6.50,31254:5.62,31255:6.20,31256:4.20,31257:5.88,31259:8.68,31267:5.00,31276:5.97,31287:5.50,31288:6.00,31290:10.00,31291:12.00,31292:8.50,31293:10.50,31294:7.00,31295:4.20,31296:4.70,31297:5.20,
+  // Laryngology
+  31535:3.50,31536:4.50,31540:6.50,31541:7.00,31545:5.50,31546:7.00,31571:4.00,31572:6.50,31573:4.50,31574:5.50,31575:1.10,31576:2.00,31579:2.50,31591:8.50,
+  // Thyroid/Parathyroid
+  60240:10.71,60252:13.00,60254:14.50,60260:11.50,60270:15.00,60271:17.00,60280:5.00,60281:6.50,60500:8.50,60502:10.00,60512:6.50,
+  // Head & Neck
+  38720:15.00,38724:18.00,21930:4.50,21931:5.50,21932:8.50,21933:11.00,42820:3.50,42821:4.00,42825:4.50,42826:5.00,42830:3.97,42831:4.50,42835:4.50,42836:5.50,42145:8.50,41530:6.00,42104:2.00,42106:2.50,42120:4.00,42415:14.50,42420:16.00,42440:7.00,42450:4.50,
+  // Sleep surgery
+  42145:8.50,41530:6.00,
+  // E/M (shared)
+  99202:1.22,99203:1.82,99204:2.60,99205:3.50,99211:0.57,99212:0.93,99213:1.30,99214:1.92,99215:2.80,99252:1.55,99253:2.11,99254:3.18,99255:3.86,99291:10.00,99292:5.00
+};
+
+// ---- ENT NCCI PTP EDITS (starter set) ----
+const ENT_NCCI_PTP={
+  30520:[[30801,1,"STD"],[30802,1,"STD"]],
+  31253:[[31254,0,"DEF"],[31255,0,"DEF"]],
+  31254:[[31255,1,"ME"]],
+  31255:[[31256,1,"ME"]],
+  31256:[[31253,1,"STD"]],
+  31257:[[31259,1,"ME"]],
+  31259:[[31253,1,"STD"],[31254,1,"STD"],[31255,1,"STD"],[31257,1,"ME"]],
+  31276:[[31287,1,"ME"],[31288,1,"ME"]],
+  31295:[[31296,1,"ME"],[31297,1,"ME"]],
+  42820:[[42821,0,"MX"],[42825,0,"MX"],[42826,0,"MX"]],
+  42825:[[42826,0,"MX"]],
+  42830:[[42831,0,"MX"],[42835,0,"MX"],[42836,0,"MX"]],
+  42835:[[42836,0,"MX"]],
+  60240:[[60252,0,"ME"],[60254,0,"ME"],[60260,1,"MX"]],
+  60252:[[60254,0,"ME"]],
+  69436:[[69433,0,"MX"]]
+};
+
+// ---- ENT MUE TABLE ----
+const ENT_MUE_TABLE={
+  69210:[1,"C",2],69420:[1,"P",3],69421:[1,"P",3],69433:[1,"P",3],69436:[1,"P",3],
+  69631:[1,"P",3],69632:[1,"P",3],69633:[1,"P",3],69635:[1,"P",3],69636:[1,"P",3],
+  69641:[1,"P",3],69642:[1,"P",3],69643:[1,"P",3],69644:[1,"P",3],69645:[1,"P",3],69646:[1,"P",3],
+  69661:[1,"P",3],69662:[1,"P",3],69710:[1,"P",3],69714:[1,"P",3],69715:[1,"P",3],
+  69717:[1,"P",3],69718:[1,"P",3],69930:[1,"P",3],
+  30140:[1,"A",3],30520:[1,"P",3],30801:[1,"P",3],30802:[1,"P",3],30930:[1,"P",3],
+  31237:[1,"P",3],31238:[1,"P",3],31239:[1,"P",3],31240:[1,"P",3],
+  31253:[1,"A",3],31254:[1,"A",3],31255:[1,"A",3],31256:[1,"A",3],31257:[1,"A",3],
+  31259:[1,"A",3],31267:[1,"A",3],31276:[1,"A",3],31287:[1,"A",3],31288:[1,"A",3],
+  31290:[1,"P",3],31291:[1,"P",3],31292:[1,"A",3],31293:[1,"A",3],31294:[1,"A",3],
+  31295:[1,"A",3],31296:[1,"A",3],31297:[1,"A",3],
+  31535:[1,"P",3],31536:[1,"P",3],31540:[1,"P",3],31541:[1,"P",3],
+  31545:[1,"P",3],31546:[1,"P",3],31571:[1,"P",3],31572:[1,"P",3],
+  31573:[1,"P",3],31574:[1,"P",3],31575:[1,"C",2],31576:[1,"C",2],31579:[1,"C",2],31591:[1,"P",3],
+  60240:[1,"P",3],60252:[1,"P",3],60254:[1,"P",3],60260:[1,"P",3],60270:[1,"P",3],60271:[1,"P",3],
+  60280:[1,"P",3],60281:[1,"P",3],60500:[1,"P",3],60502:[1,"P",3],60512:[1,"P",3],
+  38720:[1,"P",3],38724:[1,"P",3],42820:[1,"P",3],42821:[1,"P",3],42825:[1,"P",3],42826:[1,"P",3],
+  42830:[1,"P",3],42831:[1,"P",3],42835:[1,"P",3],42836:[1,"P",3],
+  42145:[1,"P",3],41530:[1,"P",3],42415:[1,"P",3],42420:[1,"P",3],42440:[1,"P",3],42450:[1,"P",3],
+  99202:[1,"C",2],99203:[1,"C",2],99204:[1,"C",2],99205:[1,"C",2],
+  99211:[1,"C",2],99212:[1,"C",2],99213:[1,"C",2],99214:[1,"C",2],99215:[1,"C",2],
+  99252:[1,"C",2],99253:[1,"C",2],99254:[1,"C",2],99255:[1,"C",2],
+  99291:[1,"C",2],99292:[4,"C",2]
+};
+
+function getRVUTable(){return getSpec()==='ENT'?ENT_RVU_TABLE:RVU_TABLE;}
+function getNCCITable(){return getSpec()==='ENT'?ENT_NCCI_PTP:NCCI_PTP;}
+function getMUETable(){return getSpec()==='ENT'?ENT_MUE_TABLE:MUE_TABLE;}
+
 function validateMUE(cptCounts){
   const mueWarnings=[],mueFixes=[];
+  const _mueT=getMUETable();
   for(const [cpt,count] of Object.entries(cptCounts)){
     const code=parseInt(cpt);
-    const rule=MUE_TABLE[code];
+    const rule=_mueT[code];
     if(!rule)continue;
     const [maxUnits,rationale,mueType]=rule;
     if(count>maxUnits){
@@ -253,9 +323,10 @@ function validateMUE(cptCounts){
 
 function validateNCCI(cptSet){
   const ncciWarnings=[],ncciFixes=[];
+  const _ncciT=getNCCITable();
   const cptArr=[...cptSet];
   for(let i=0;i<cptArr.length;i++){
-    const edits=NCCI_PTP[cptArr[i]];
+    const edits=_ncciT[cptArr[i]];
     if(!edits)continue;
     for(const [col2,mod,reason] of edits){
       if(cptSet.has(col2)){
@@ -278,18 +349,21 @@ function validateBilling(codes,noteText){
   const cptSet=new Set(cptMatches);
   const noteUpper=(noteText||"").toUpperCase();
   const isSpine=noteUpper.includes("LUMBAR")||noteUpper.includes("CERVICAL")||noteUpper.includes("THORACIC")||noteUpper.includes("FUSION")||noteUpper.includes("TLIF")||noteUpper.includes("ACDF")||noteUpper.includes("LAMINECTOMY");
-  // Navigation (clinical context — NCCI doesn't know spine vs cranial)
-  if(cptSet.has(61782)&&isSpine)fixes.push({msg:"NAVIGATION: 61782 is cranial only. Use 61783 for spine."});
-  // Duplicates
-  const nonAddOn=new Set([22551,22612,22600,22610,22633,63047,63030,22513,22514,22840,22842,22843,22844,61783,20930,20931,20936,69990]);
+  // Navigation (clinical context — NCCI doesn't know spine vs cranial) — NSG only
+  if(getSpec()==='NSG'&&cptSet.has(61782)&&isSpine)fixes.push({msg:"NAVIGATION: 61782 is cranial only. Use 61783 for spine."});
+  // Duplicates (NSG-specific non-add-on list)
+  const nonAddOn=getSpec()==='ENT'?new Set([30520,60240,60252,42820,42825,42830,42835,38720,69436]):new Set([22551,22612,22600,22610,22633,63047,63030,22513,22514,22840,22842,22843,22844,61783,20930,20931,20936,69990]);
   const counts={};cptMatches.forEach(c=>{counts[c]=(counts[c]||0)+1;});
   Object.entries(counts).forEach(([c,n])=>{if(n>1&&nonAddOn.has(parseInt(c)))fixes.push({msg:"DUPLICATE: "+c+" appears "+n+"x but is not a per-level add-on."});});
-  // Graft sanity (requires note text analysis)
-  if(cptSet.has(20931)){const noteLow=(noteText||"").toLowerCase();if(noteLow.includes("morselized")||noteLow.includes("chips")||noteLow.includes("dbm"))fixes.push({msg:"GRAFT: 20931 (structural) but note says morselized/chips/DBM. Should be 20930."});}
-  // Microscope documentation (NCCI handles bundling, we check documentation)
-  if(cptSet.has(69990)&&!(noteText||"").match(/microscop/i))warnings.push({msg:"69990 (microscope) billed but microscope use not documented."});
-  // PSO + decompression code swap (clinical logic)
-  if((cptSet.has(22206)||cptSet.has(22207))&&(cptSet.has(63047)||cptSet.has(63048)))warnings.push({msg:"PSO performed — decompression should be 63052/63053, NOT 63047/63048."});
+  // NSG-specific checks
+  if(getSpec()==='NSG'){
+    // Graft sanity (requires note text analysis)
+    if(cptSet.has(20931)){const noteLow=(noteText||"").toLowerCase();if(noteLow.includes("morselized")||noteLow.includes("chips")||noteLow.includes("dbm"))fixes.push({msg:"GRAFT: 20931 (structural) but note says morselized/chips/DBM. Should be 20930."});}
+    // Microscope documentation (NCCI handles bundling, we check documentation)
+    if(cptSet.has(69990)&&!(noteText||"").match(/microscop/i))warnings.push({msg:"69990 (microscope) billed but microscope use not documented."});
+    // PSO + decompression code swap (clinical logic)
+    if((cptSet.has(22206)||cptSet.has(22207))&&(cptSet.has(63047)||cptSet.has(63048)))warnings.push({msg:"PSO performed — decompression should be 63052/63053, NOT 63047/63048."});
+  }
   // NCCI PTP edits
   const ncci=validateNCCI(cptSet);
   warnings.push(...ncci.ncciWarnings);
@@ -301,11 +375,12 @@ function validateBilling(codes,noteText){
   warnings.push(...mue.mueWarnings);
   fixes.push(...mue.mueFixes);
   // RVU correction
+  const _rvuT=getRVUTable();
   let correctedRVU=0;
-  cptMatches.forEach(c=>{const rvu=RVU_TABLE[c];if(rvu){const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;correctedRVU+=rvu*mult;}});
+  cptMatches.forEach(c=>{const rvu=_rvuT[c];if(rvu){const line=codes.split("\n").find(l=>l.includes(String(c)));const multMatch=line?.match(/x\s*(\d+)/i);const mult=multMatch?parseInt(multMatch[1]):1;correctedRVU+=rvu*mult;}});
   // E/M MDM FLOOR CHECK — if note recommends surgery, minimum is 99204/99214
   const noteLC=(noteText||"").toLowerCase();
-  const recommendsSurgery=noteLC.includes("recommend")&&(noteLC.includes("surgery")||noteLC.includes("fusion")||noteLC.includes("discectomy")||noteLC.includes("laminectomy")||noteLC.includes("microdiscectomy")||noteLC.includes("kyphoplasty")||noteLC.includes("craniotomy")||noteLC.includes("decompression")||noteLC.includes("acdf")||noteLC.includes("tlif"));
+  const recommendsSurgery=noteLC.includes("recommend")&&(noteLC.includes("surgery")||noteLC.includes("fusion")||noteLC.includes("discectomy")||noteLC.includes("laminectomy")||noteLC.includes("microdiscectomy")||noteLC.includes("kyphoplasty")||noteLC.includes("craniotomy")||noteLC.includes("decompression")||noteLC.includes("acdf")||noteLC.includes("tlif")||noteLC.includes("septoplasty")||noteLC.includes("fess")||noteLC.includes("tonsillectomy")||noteLC.includes("adenoidectomy")||noteLC.includes("thyroidectomy")||noteLC.includes("tympanoplasty")||noteLC.includes("mastoidectomy")||noteLC.includes("parotidectomy")||noteLC.includes("laryngoscopy")||noteLC.includes("sinus surgery")||noteLC.includes("myringotomy")||noteLC.includes("tubes"));
   if(recommendsSurgery){
     const emCode=cptMatches.find(c=>c>=99200&&c<=99499);
     if(emCode){
@@ -356,7 +431,7 @@ async function runAuthCheck(){
     if(authState.labsText)clinicalData+="\n--- LABS (laboratory results) ---\n"+authState.labsText+"\n";
     if(authState.priorText)clinicalData+="\n--- PRIOR PROCEDURES (surgical history) ---\n"+authState.priorText+"\n";
     clinicalData+="\n=== END CLINICAL DATA ===\n";
-    const sys=`You are a prior authorization specialist for neurosurgery with EXACT payer policy criteria.
+    const sys=`You are a prior authorization specialist for ${getSpec()==='ENT'?'ENT (otolaryngology)':'neurosurgery'} with EXACT payer policy criteria.
 Compare clinical data against SPECIFIC payer requirements.
 
 CRITICAL DATA ZONE RULES:
@@ -514,6 +589,9 @@ async function _getSpeechToken(){
 }
 
 // ---- UNIFIED ENCOUNTER TYPE ----
+let specialty=ls('opnote-specialty','ENT');
+function setSpecialty(s){specialty=s;lsS('opnote-specialty',s);render();}
+function getSpec(){return specialty;}
 let encounterType='Clinic - Established';
 function encounterToState(et){
   const map={'Clinic - New Patient':{nt:'clinic',cv:'new',cp:'new'},'Clinic - Established':{nt:'clinic',cv:'followup',cp:'established'},'Clinic - Post-Op':{nt:'clinic',cv:'postop',cp:'established'},'Consult':{nt:'consult',cv:'new',cp:'new'},'Progress Note':{nt:'progress',cv:'followup',cp:'established'},'OpNote':{nt:'operative',cv:'new',cp:'new'}};
@@ -533,7 +611,7 @@ async function scribeStartRec(){
     const ac=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     const ct=new SpeechSDK.ConversationTranscriber(sc,ac);
     const phrases=SpeechSDK.PhraseListGrammar.fromRecognizer(ct);
-    [
+    const NSG_PHRASES=[
       // Spine anatomy
       'cervical','thoracic','lumbar','sacral','coccyx','foramen','foraminal','neuroforamen',
       'pedicle','lamina','facet','spinous process','transverse process','vertebral body',
@@ -556,7 +634,7 @@ async function scribeStartRec(){
       'TLIF','transforaminal lumbar interbody fusion',
       'PLIF','posterior lumbar interbody fusion','ALIF','XLIF','OLIF',
       'posterior cervical fusion','posterior spinal fusion',
-      'decompression','arthrodesis','craniotomy','craniectomy','craniotomy','cranioplasty',
+      'decompression','arthrodesis','craniotomy','craniectomy','cranioplasty',
       'VP shunt','ventriculoperitoneal shunt','EVD','external ventricular drain',
       'carpal tunnel release','cubital tunnel release','ulnar nerve transposition',
       // Implants & tools
@@ -578,7 +656,94 @@ async function scribeStartRec(){
       'gabapentin','pregabalin','Lyrica','meloxicam','Mobic','methylprednisolone','Medrol',
       'dexamethasone','Decadron','tizanidine','Zanaflex','cyclobenzaprine','Flexeril',
       'epidural steroid injection','ESI','transforaminal injection','facet injection','nerve block',
-    ].forEach(p=>phrases.addPhrase(p));
+    ];
+    const ENT_PHRASES=[
+      // Ear anatomy
+      'tympanic membrane','ossicular chain','malleus','incus','stapes','mastoid','mastoid antrum',
+      'facial nerve','chorda tympani','cochlea','semicircular canal','vestibule','round window',
+      'oval window','eustachian tube','external auditory canal','pinna','auricle','tragus',
+      'tegmen tympani','sigmoid sinus','jugular bulb','middle ear','inner ear',
+      // Nose/sinus anatomy
+      'septum','nasal septum','turbinate','inferior turbinate','middle turbinate','superior turbinate',
+      'uncinate process','ostiomeatal complex','OMC','cribriform plate','ethmoid','maxillary sinus',
+      'frontal sinus','sphenoid sinus','ethmoid sinus','frontal recess','sphenopalatine','nasal valve',
+      'internal nasal valve','external nasal valve','agger nasi','bulla ethmoidalis',
+      'concha bullosa','Haller cell','Onodi cell','sphenoid rostrum',
+      // Throat anatomy
+      'oropharynx','nasopharynx','hypopharynx','larynx','supraglottis','glottis','subglottis',
+      'vocal fold','vocal cord','arytenoid','epiglottis','vallecula','pyriform sinus',
+      'cricoid','thyroid cartilage','cricoarytenoid','cricothyroid',
+      'tongue base','lingual tonsil','palatine tonsil','adenoid',
+      'uvula','soft palate','hard palate','floor of mouth',
+      // Head & neck
+      'parotid','submandibular','sublingual','thyroid','parathyroid','thyroglossal duct',
+      'recurrent laryngeal nerve','RLN','superior laryngeal nerve','marginal mandibular nerve',
+      'spinal accessory nerve','hypoglossal nerve','great auricular nerve',
+      'neck level I','neck level II','neck level III','neck level IV','neck level V',
+      'sternocleidomastoid','SCM','jugulodigastric','anterior triangle','posterior triangle',
+      // ENT diagnoses
+      'cholesteatoma','chronic rhinosinusitis','CRS','nasal polyps','polyposis',
+      'deviated septum','septal deviation','obstructive sleep apnea','OSA',
+      'vocal fold paralysis','vocal cord paralysis','laryngopharyngeal reflux','LPR',
+      'Reinke edema','otitis media','chronic otitis media','otitis externa',
+      'tympanic membrane perforation','TM perforation','conductive hearing loss',
+      'sensorineural hearing loss','mixed hearing loss','tinnitus','vertigo','BPPV',
+      'Meniere disease','vestibular schwannoma','acoustic neuroma',
+      'thyroid nodule','thyroid cancer','papillary thyroid carcinoma',
+      'hyperparathyroidism','peritonsillar abscess','PTA',
+      'laryngeal cancer','squamous cell carcinoma','salivary gland tumor',
+      'pleomorphic adenoma','Warthin tumor','mucoepidermoid',
+      'obstructive adenoid hypertrophy','tonsillar hypertrophy',
+      // ENT procedures
+      'septoplasty','FESS','functional endoscopic sinus surgery',
+      'ethmoidectomy','maxillary antrostomy','frontal sinusotomy','sphenoidotomy',
+      'balloon sinuplasty','turbinate reduction','submucous resection',
+      'tympanoplasty','mastoidectomy','tympanomastoidectomy',
+      'myringotomy','PE tubes','pressure equalization tubes',
+      'tonsillectomy','adenoidectomy','adenotonsillectomy',
+      'thyroidectomy','hemithyroidectomy','total thyroidectomy','thyroid lobectomy',
+      'parathyroidectomy','parotidectomy','submandibular gland excision',
+      'neck dissection','selective neck dissection','modified radical neck dissection',
+      'laryngoscopy','microlaryngoscopy','direct laryngoscopy',
+      'vocal fold injection','medialization laryngoplasty','thyroplasty',
+      'UPPP','uvulopalatopharyngoplasty','uvulectomy','tongue base reduction',
+      'stapedectomy','stapedotomy','cochlear implant','BAHA',
+      'tracheostomy','tracheotomy','endoscopic DCR','dacryocystorhinostomy',
+      // ENT implants & tools
+      'microdebrider','coblation','NIM','nerve integrity monitor',
+      'TORP','PORP','total ossicular replacement prosthesis','partial ossicular replacement prosthesis',
+      'PE tubes','T-tubes','Shepard tubes','Armstrong tubes',
+      'Stryker','Medtronic','Olympus','Karl Storz',
+      'zero degree endoscope','thirty degree endoscope','forty-five degree endoscope','seventy degree endoscope',
+      'image guidance','navigation','Brainlab','Fusion','CT navigation',
+      'bipolar cautery','monopolar cautery','harmonic scalpel','LigaSure',
+      // ENT exam terms
+      'audiogram','tympanogram','ABR','auditory brainstem response',
+      'Dix-Hallpike','Epley maneuver','Rinne','Weber','tuning fork',
+      'FNA','fine needle aspiration','flexible nasopharyngoscopy',
+      'rigid nasal endoscopy','videostroboscopy','Lund-Mackay','CT sinus',
+      'polysomnography','sleep study','Mallampati','Friedman',
+      'FEES','fiberoptic endoscopic evaluation of swallowing',
+      // ENT medications
+      'fluticasone','Flonase','budesonide','Rhinocort','mometasone','Nasonex',
+      'montelukast','Singulair','levothyroxine','Synthroid',
+      'ofloxacin drops','ciprofloxacin drops','Ciprodex','Cortisporin',
+      'amoxicillin','amoxicillin-clavulanate','Augmentin','azithromycin','clindamycin',
+      'prednisone','methylprednisolone','Medrol','dexamethasone',
+      'saline irrigation','NeilMed','sinus rinse','Neti pot',
+      'gabapentin','omeprazole','lansoprazole',
+      // CPT code procedure names (for speech recognition of spoken codes)
+      'septoplasty code','ethmoidectomy code','maxillary antrostomy code',
+      'tonsillectomy code','adenoidectomy code','thyroidectomy code',
+      'thirty one two fifty four','thirty one two fifty five','thirty one two fifty six',
+      'thirty one two fifty seven','three zero five twenty','six zero two forty',
+      'four two eight twenty','four two eight twenty one',
+      // Shared terms
+      'MRI','CT','CT scan','X-ray','gadolinium','contrast',
+      'general anesthesia','local anesthesia','sedation',
+      'bilateral','unilateral','left','right',
+    ];
+    (getSpec()==='ENT'?ENT_PHRASES:NSG_PHRASES).forEach(p=>phrases.addPhrase(p));
     _liveTranscript=[];_liveInterim='';
     ct.transcribing=(s,e)=>{
       const spk=e.result.speakerId||'';
@@ -629,7 +794,7 @@ async function scribeDoneRec(){
   if(!transcript.trim()){scribeToast('No speech detected');return;}
   scribeProcessing=true;scribeStatus='Extracting clinical data...';render();
   try{
-    const resp=await authFetch('/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcript,encounter_type:encounterType})});
+    const resp=await authFetch('/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transcript,encounter_type:encounterType,specialty:getSpec()})});
     const data=await resp.json();
     if(data.error){scribeToast('Error: '+data.error);scribeProcessing=false;scribeStatus='';render();return;}
     _applyScribeResult(data,encounterType,transcript);
@@ -658,6 +823,12 @@ function _applyScribeResult(data,et,transcript){
     if(f.assessment)lines.push('Assessment: '+f.assessment);
     if(f.plan&&f.plan.length)lines.push('Plan: '+f.plan.join(', '));
     if(f.medications&&f.medications.length)lines.push('Meds: '+f.medications.join(', '));
+  }
+  // CPT codes from extraction
+  const cptCodes=data.cpt_codes||[];
+  if(cptCodes.length){
+    lines.push('');lines.push('AI-Detected CPT Codes:');
+    cptCodes.forEach(c=>lines.push('  '+c.code+' - '+c.description+' ('+c.confidence+')'));
   }
   lines.push('');lines.push('--- RAW TRANSCRIPT ---');lines.push(transcript);
   state.text=lines.join('\n');
@@ -719,12 +890,13 @@ async function processAudioRec(id){
 document.addEventListener('visibilitychange',()=>{if(scribeRecording&&document.visibilityState==='visible'){try{navigator.wakeLock.request('screen').then(wl=>{scribeWakeLock=wl;}).catch(()=>{});}catch{}try{if(window._keepAliveCtx&&window._keepAliveCtx.state==='suspended')window._keepAliveCtx.resume();}catch{}const sa=document.getElementById('scribeSilentAudio');if(sa&&sa.paused)sa.play().catch(()=>{});}});
 
 // ---- IMAGE ANALYSIS ----
+function getImgPrompt(){return "You are a clinical document extractor for "+(getSpec()==='ENT'?"ENT (otolaryngology)":"neurosurgery")+". IF MEDICAL IMAGING: Extract findings in surgical format. IF TEXT: Transcribe. No patient identifiers.";}
 const IMG_PROMPT="You are a clinical document extractor for neurosurgery. IF MEDICAL IMAGING: Extract findings in surgical format. IF TEXT: Transcribe. No patient identifiers.";
 function resizeImage(file){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{const max=2048;let w=img.width,h=img.height;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);resolve(c.toDataURL("image/jpeg",0.85).split(",")[1]);};img.onerror=reject;img.src=URL.createObjectURL(file);});}
 async function analyzeImage(file,target){
   setState({phase:"image",err:null});
   try{let b64,mt=file.type||"image/jpeg";if(file.size>4*1024*1024){b64=await resizeImage(file);mt="image/jpeg";}else{b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
-  const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:IMG_PROMPT}]}],null,2048);
+  const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:getImgPrompt()}]}],null,2048);
   if(txt){if(target==="addend")state.addend=(state.addend?state.addend+"\n\n":"")+txt;else state.text=(state.text?state.text+"\n\n":"")+txt;}
   setState({phase:state.noteText?"done":""});}catch(e){setState({err:"Image: "+e.message,phase:state.noteText?"done":""});}
 }
@@ -1048,8 +1220,141 @@ CURRENT ESTIMATE: $[range]
 WITH GAPS FILLED: $[range]
 CAPTURE RATE: [%]`
 };
-function getPrompt(key){const custom=ls('opnote-prompt-'+key,null);return custom!==null?custom:PROMPT_DEFAULTS[key]||'';}
-function setPrompt(key,val){if(val===PROMPT_DEFAULTS[key])localStorage.removeItem('opnote-prompt-'+key);else lsS('opnote-prompt-'+key,val);}
+// ---- ENT PROMPT OVERRIDES ----
+const ENT_PROMPT_OVERRIDES={
+sys_header:`You are OpNote Intelligence — ENT (otolaryngology) note generator and billing engine.
+Date: {DATE}
+Surgeon: {SURGEON}`,
+sys_operative:`MDM COMPLEXITY LINE (non-operative): first line = single sentence.
+MEDICOLEGAL (OPERATIVE): TIME OUT, CONSENT in INDICATIONS, ANTIBIOTICS, NERVE MONITORING (facial nerve / RLN — ONLY if mentioned), COUNTS x2, SPECIMEN, TOTAL OPERATIVE TIME.
+OPERATIVE STRUCTURE: PREOP DX, POSTOP DX, PROCEDURE, INDICATIONS, ANESTHESIA, ANTIBIOTICS, POSITION, TIME OUT, NERVE MONITORING, TECHNIQUE, TOTAL OPERATIVE TIME, IMPLANTS, EBL, COMPLICATIONS, DRAINS, SPECIMENS, COUNTS, CLOSURE, DISPOSITION
+OPERATIVE NOTE DETAIL RULES:
+- LATERALITY: ALWAYS state laterality explicitly: "Left ear", "Right nasal cavity", "Bilateral". For sinus surgery, specify each sinus side.
+- NERVE MONITORING: If facial nerve monitoring (NIM) mentioned for ear/parotid: "NIM: Facial nerve stimulated at [X] mA, positive response." If RLN monitoring for thyroid: "NIM: RLN identified, stimulated at 0.5 mA, intact." If NOT mentioned, omit section entirely.
+- POSITIONING: Ear: "Supine, head turned [L/R]." Tonsils/adenoids: "Supine, Rose position, shoulder roll, McIvor mouth gag." Sinus: "Supine, head of bed elevated 30 degrees." Thyroid: "Supine, neck extended, shoulder roll, arms tucked."
+- IMPLANTS: List ALL implants: PE tubes (type, size), TORP/PORP (material), prostheses with manufacturer if stated.
+- SPECIMENS: "Tonsils to pathology." "Polyps to pathology." "Thyroid specimen to pathology, labeled right/left." If no tissue: "None."
+- DRAINS: Thyroid/neck: "JP drain to operative bed, on bulb suction." If no drain: "None."
+- EBL: State in mL. If not dictated: "***ASSUMED*** Minimal, <50 mL"
+- ANTIBIOTICS: Name and dose. If not dictated: "Ancef 2g IV ***ASSUMED***"
+- COUNTS: "Correct x2"
+- SINUS SURGERY: Document EACH sinus addressed separately with laterality. "Right maxillary antrostomy, right anterior ethmoidectomy, right posterior ethmoidectomy." NOT "bilateral FESS" without specifics.
+CLOSURE DEFAULT: Unless specified: "Hemostasis obtained. [Incision closed in layers / No external incisions]. Sterile dressing applied. ***ASSUMED***"
+DISPOSITION DEFAULT: "To PACU in stable condition. Activity: [head of bed elevated / soft diet / neck precautions]. Follow-up in [1-2 weeks]."
+OPERATIVE NOTE PHYSICAL EXAM RULES:
+- OPERATIVE NOTES do NOT include a PHYSICAL EXAMINATION section. Skip PE entirely for op notes.`,
+sys_clinic:`CLINIC NOTE RULES:
+- MANDATORY FIRST LINE for ALL clinic notes: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
+  COMPLEXITY IS DETERMINED BY MDM RISK — same E/M rules as neurosurgery.
+    - Note recommends ANY surgery → RISK=HIGH → at minimum MODERATE COMPLEXITY (99204/99214)
+    - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
+    - Post-op routine check → LOW or MODERATE COMPLEXITY
+- ALLERGIES: Do NOT include an ALLERGIES section in the note.
+- CURRENT MEDICATIONS: If new patient, summarize. If not dictated: "CURRENT MEDICATIONS: Per chart review."
+- MANDATORY PHYSICAL EXAM — ENT SPECIALTY FORMAT:
+  ALL clinic notes MUST include this exam. If input has exam findings, use them. If partial or missing, auto-fill with these assumed-normal defaults marked ***ASSUMED***:
+  PHYSICAL EXAMINATION:
+    General: Alert, oriented x3, well-developed, well-nourished, NAD, normal voice ***ASSUMED***
+    Cranial Nerves: CN II-XII grossly intact bilaterally ***ASSUMED***
+    Head: Normocephalic, atraumatic, no lesions or masses ***ASSUMED***
+    Face: CN VII intact, sensation V1/V2/V3 intact bilaterally, no mass or lesion ***ASSUMED***
+    Eyes: EOM intact, no nystagmus ***ASSUMED***
+    Ears: Anatomically normal bilaterally, no TTP, TMs intact without retraction, effusion, or perforation ***ASSUMED***
+    Nose: Midline dorsum, patent nares bilaterally, mucosa pink and moist, septum midline, turbinates benign ***ASSUMED***
+    Oral Cavity/Oropharynx: Lips, buccal mucosa, hard palate, soft palate, uvula, tongue, floor of mouth benign ***ASSUMED***
+    Tonsils: Benign without masses, erythema, or exudate ***ASSUMED***
+    Neck: Trachea midline, nontender, full ROM ***ASSUMED***
+    Thyroid: Normal size and consistency, no palpable nodules ***ASSUMED***
+    Lymphadenopathy: No lymphadenopathy or masses ***ASSUMED***
+    Salivary Glands: Non-tender, mobile, uniform size and consistency ***ASSUMED***
+  If findings in HPI suggest abnormality, adjust assumed exam to MATCH (e.g. patient reports hearing loss → "Left TM: retracted with effusion ***ASSUMED FROM HPI***").
+  For red flags (airway compromise, rapidly enlarging mass, stridor): NEVER auto-fill normals — use ***NOT EXAMINED — DOCUMENT***.
+- Documentation: HPI/PMH/PSH/allergies/medications/SH/FH/ROS personally reviewed by {SURGEON}, MD
+- ASSESSMENT PHRASING: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis]. [Imaging/exam confirms]. [Conservative tx status]. [Surgical candidate / continue medical management]."
+- Include ROS, PMH/PSH, FAMILY HISTORY (new patient), SOCIAL HISTORY (new patient).
+- PLAN STRUCTURE FOR SURGICAL CANDIDATES:
+  PLAN:
+  1. Discussed diagnosis, natural history, and treatment options.
+  2. Risks discussed: [procedure-specific risks]. Benefits and alternatives reviewed.
+  3. Recommend [procedure].
+  4. Pre-op: [labs, clearances, imaging].
+  5. RTC for surgery scheduling.
+- Do NOT include billing codes in the note body.
+- DUPLICATE SECTION RULE: NEVER output the same section header twice.`,
+sys_codes:`CODE-SPECIFIC (ENT):
+1. SINUS SURGERY: Bill per sinus addressed. 31254=total ethmoidectomy, 31255=partial. 31256=maxillary antrostomy. 31276=frontal sinusotomy. 31287/31288=sphenoidotomy.
+2. SEPTOPLASTY + TURBINATE: 30520 + 30140 (or 30801/30802 for cautery/ablation).
+3. TONSILLECTOMY & ADENOIDECTOMY: 42820/42825/42826 (T&A age-dependent), 42830/42835/42836 (adenoidectomy alone). Do NOT bill both 42821+42826.
+4. THYROIDECTOMY: 60240=lobectomy, 60252=total, 60260=completion. 60500=parathyroidectomy.
+5. EAR: 69436=myringotomy+tubes, 69631-69646=tympanoplasty codes. 69710=mastoidectomy.
+6. LARYNGOSCOPY: 31575=flex nasal, 31535-31541=operative direct. 31571/31572=with injection.
+7. BILATERAL MODIFIER: Use -50 for bilateral procedures when appropriate (bilateral tubes, bilateral FESS).
+8. NO DUPLICATE CPTs (except per-sinus add-ons).
+9. Nerve monitoring: NOT billed separately in ENT (included in primary procedure).
+FESS BILLING RULES:
+- Each sinus = separate CPT. Bill EACH sinus addressed.
+- Maxillary: 31256. Anterior ethmoid: 31254/31255. Posterior ethmoid: 31257. Frontal: 31276. Sphenoid: 31287/31288.
+- Total ethmoidectomy (31254) includes partial (31255) — do NOT bill both.
+- Balloon sinuplasty: 31295/31296/31297 per sinus.
+PRE-AUTHORIZATION (CLINIC NOTES recommending surgery):
+- Recommended procedure with CPT
+- Medical necessity
+- Imaging findings (CT sinus Lund-Mackay score, audiogram, thyroid ultrasound)
+- Required pre-op items`,
+p2_billing:`Billing analysis. SPECIFIC, GRANULAR, MAXIMALLY AGGRESSIVE within defensible bounds.
+
+E/M MDM SCORING — MANDATORY RULES:
+Same E/M MDM scoring matrix as neurosurgery (Risk/Problems/Data, highest 2 of 3).
+IF THE NOTE RECOMMENDS SURGERY → RISK = HIGH. ALWAYS.
+
+MANDATORY:
+1. NEVER list same CPT twice (per-sinus add-ons listed once each).
+2. Bill EACH sinus separately for FESS.
+3. Bilateral modifier -50 when applicable.
+4. T&A codes are age-dependent.
+FORMAT:
+E/M MDM SCORING:
+-RISK: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+-PROBLEMS: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+-DATA: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
+→ [scoring] = [E/M code] ([new/established])
+CODES:
+[CODE - Description (X.X RVU) CONFIDENCE]
+MODIFIERS: [with justification]
+ICD-10: [one per line]
+ICD-10 ACCURACY RULES (ENT):
+- Chronic sinusitis: J32.0 (maxillary), J32.1 (frontal), J32.2 (ethmoidal), J32.3 (sphenoidal), J32.4 (pansinusitis)
+- Nasal polyps: J33.0 (antrochoanal), J33.1 (other/multiple), J33.8 (other), J33.9 (unspecified)
+- Deviated septum: J34.2
+- Chronic otitis media: H66.1x (tubotympanic), H66.2x (atticoantral), H66.3x (other chronic suppurative)
+- Cholesteatoma: H71.0x (attic), H71.1x (tympanum), H71.2x (mastoid), H71.3x (diffuse), H71.9x (unspecified)
+- TM perforation: H72.0x (central), H72.1x (attic), H72.2x (other marginal), H72.8x (other), H72.9x (unspecified)
+- Hearing loss: H90.0 (bilateral conductive), H90.1x (unilateral conductive), H90.3 (bilateral sensorineural), H90.4x (unilateral sensorineural), H91.1x (presbycusis), H91.2x (sudden idiopathic), H91.9x (unspecified)
+- Thyroid: E04.1 (nontoxic single nodule), E04.2 (nontoxic multinodular), C73 (thyroid cancer), E21.0 (primary hyperparathyroidism)
+- Vocal fold paralysis: J38.00 (unspecified), J38.01 (unilateral partial), J38.02 (unilateral complete)
+- OSA: G47.33
+- Tonsil/adenoid hypertrophy: J35.1 (tonsillar), J35.2 (adenoid), J35.3 (both)
+BUNDLING: [notes]
+GAPS:
+CLINIC NOTE PHYSICAL EXAM VALIDATION (MANDATORY):
+- If note has NO PE section → HIGH gap
+- If ***ASSUMED*** markers → MED gap: "Physical exam auto-filled — verify"
+- If ***NOT EXAMINED — DOCUMENT*** → HIGH gap
+IMPACT: HIGH/MED/LOW
+ISSUE: [missing] — [CPT] ([+X.X RVU])
+LANGUAGE: [exact text]
+---
+FLAGS:
+RED/YELLOW/GREEN: [issue]
+FINANCIAL:
+TOTAL RVU: [#]
+CURRENT ESTIMATE: $[range]
+WITH GAPS FILLED: $[range]
+CAPTURE RATE: [%]`
+};
+
+function getPrompt(key){const custom=ls('opnote-prompt-'+key,null);if(custom!==null)return custom;if(getSpec()==='ENT'&&ENT_PROMPT_OVERRIDES[key])return ENT_PROMPT_OVERRIDES[key];return PROMPT_DEFAULTS[key]||'';}
+function setPrompt(key,val){const def=getSpec()==='ENT'&&ENT_PROMPT_OVERRIDES[key]?ENT_PROMPT_OVERRIDES[key]:PROMPT_DEFAULTS[key];if(val===def)localStorage.removeItem('opnote-prompt-'+key);else lsS('opnote-prompt-'+key,val);}
 function resetPrompt(key){localStorage.removeItem('opnote-prompt-'+key);}
 function resetAllPrompts(){PROMPT_KEYS.forEach(k=>localStorage.removeItem('opnote-prompt-'+k));}
 function isPromptCustomized(key){return localStorage.getItem('opnote-prompt-'+key)!==null;}
@@ -1571,7 +1876,7 @@ async function ocrImage(file){
   let b64,mt=file.type||"image/jpeg";
   if(file.size>4*1024*1024){b64=await resizeImage(file);mt="image/jpeg";}
   else{b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
-  const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:IMG_PROMPT}]}],null,2048);
+  const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:getImgPrompt()}]}],null,2048);
   return txt;
 }
 
@@ -1718,7 +2023,7 @@ async function detailImageAnalyze(caseId,noteIdx,file){
     let b64,mt=file.type||"image/jpeg";
     if(file.size>4*1024*1024){b64=await resizeImage(file);mt="image/jpeg";}
     else{b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
-    const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:IMG_PROMPT}]}],null,2048);
+    const{txt}=await callLLM([{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:getImgPrompt()}]}],null,2048);
     setState({phase:"done",detailAddendText:(state.detailAddendText||"")+"\n"+txt});
   }catch(e){setState({err:"Image: "+e.message,phase:"done"});}
 }
@@ -1824,7 +2129,8 @@ async function incWU(){const sel=state.workup.filter((_,i)=>state.wuChecked[i]);
 async function verifyBilling(){
   setState({phase:"verify",err:null});
   try{
-    const sys=`You are a neurosurgery billing COMPLIANCE AUDITOR. Be adversarial. Check for:
+    const _specName=getSpec()==='ENT'?'ENT (otolaryngology)':'neurosurgery';
+    const sys=`You are a ${_specName} billing COMPLIANCE AUDITOR. Be adversarial. Check for:
 1. Codes without documentation support 2. Region mismatches 3. Segment count errors
 4. Bundling violations 5. Missing billable codes 6. Modifier opportunities 7. RVU errors
 8. Missing documentation elements (ROS, family history, social history, exam components)
@@ -2043,7 +2349,8 @@ function render(){
 
   // HEADER
   const _azBadge=' · <span style="color:#86efac;font-weight:700">\u{1F512} Azure</span>';
-  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}</div></div><div style="display:flex;gap:6px">`;
+  const _specBadge=specialty==='ENT'?' · <span style="color:#c4b5fd;font-weight:700">ENT</span>':' · <span style="color:#93c5fd;font-weight:700">NSG</span>';
+  h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:20px;font-weight:800;color:#fff">OpNote Intelligence</div><div style="font-size:11px;color:#475569;margin-top:2px">v10.0 · ${TODAY}${_azBadge}${_specBadge}</div></div><div style="display:flex;gap:6px">`;
   h+=`<a href="/cohort" class="btn" style="background:#1e3a5f;text-decoration:none;display:inline-flex;align-items:center;font-size:10px">Cohort</a>`;
   h+=`<button class="btn" style="background:#334155" onclick="setState({showSettings:!state.showSettings})">⚙️</button>`;
   if(s.view!=="input")h+=`<button class="btn" style="background:#1e3a5f" onclick="lastDraftId=null;scribeOpen=true;activePatient=null;setState({view:'input',noteText:'',billRaw:'',gaps:[],flags:[],financial:null,workup:[],questions:[],err:null,phase:'',editing:false,addend:'',text:'',_gc:{},_qc:{},tStart:null,tNote:null,tCopy:null,linkedTo:null,billingValidation:null,levelUpResult:null,verifyItems:null,verifyCorrected:'',verifyRVU:'',_reopenedCase:null,_reopenedNoteIdx:null,_draftId:null,_prepContext:''})">+ New</button>`;
@@ -2061,6 +2368,11 @@ function render(){
     h+=`<div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:14px;margin-bottom:12px">`;
     h+=`<div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:10px">SETTINGS</div>`;
     h+=`<div style="font-size:11px;color:${serverReachable?"#86efac":"#fca5a5"};margin-bottom:10px">${serverReachable?"✅ Server connected · 🔒 Azure":"⚠️ Server unreachable"}</div>`;
+    h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Specialty</div>`;
+    h+=`<div style="display:flex;gap:6px;margin-bottom:10px">`;
+    h+=`<button class="btn" style="flex:1;padding:10px;font-size:12px;background:${specialty==='NSG'?'#2563eb':'#1e293b'}" onclick="setSpecialty('NSG')">NSG</button>`;
+    h+=`<button class="btn" style="flex:1;padding:10px;font-size:12px;background:${specialty==='ENT'?'#7c3aed':'#1e293b'}" onclick="setSpecialty('ENT')">ENT</button>`;
+    h+=`</div>`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Surgeon Name</div>`;
     h+=`<input class="inp" value="${esc(s.sn)}" placeholder="Last name" onchange="state.sn=this.value;lsS('opnote-surgeon',this.value);render()" style="margin-bottom:8px">`;
     h+=`<div style="font-size:12px;color:#64748b;margin-bottom:4px">Coder Email</div>`;
@@ -2336,6 +2648,10 @@ function render(){
 
   // ---- AUTH VIEW ----
   if(s.view==="auth"){
+    if(getSpec()==='ENT'){
+      h+=`<div style="font-size:16px;font-weight:800;color:#f1f5f9;margin-bottom:12px">🛡️ Prior Authorization Check</div>`;
+      h+=`<div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🚧</div><div style="font-size:14px;font-weight:700;color:#c4b5fd;margin-bottom:8px">ENT Prior Auth — Coming Soon</div><div style="font-size:12px;color:#64748b;line-height:1.6">Phase 2 will add ENT-specific prior authorization criteria:<br>FESS Lund-Mackay scoring, Paradise criteria for T&A,<br>Bethesda classification for thyroid FNA, and more.</div></div>`;
+    } else {
     const a=authState;
     h+=`<div style="font-size:16px;font-weight:800;color:#f1f5f9;margin-bottom:12px">🛡️ Prior Authorization Check</div>`;
     h+=`<div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px">PAYER</div><div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">`;
@@ -2378,7 +2694,8 @@ function render(){
       if(a.letter){h+=`<div class="card" style="border-left:4px solid #10b981"><div class="card-h"><span class="title">📝 Justification Letter</span><button class="btn" style="background:#334155" id="copyLetterBtn" onclick="navigator.clipboard.writeText(authState.letter);this.innerHTML='✅';setTimeout(()=>this.innerHTML='📋 Copy',2000)">📋 Copy</button></div><div class="card-b" id="authLetter"></div></div>`;}
     }
     if(a.results||a.payer||a.procedure)h+=`<button style="width:100%;margin-top:10px;padding:10px;font-size:12px;color:#64748b;background:none;border:none" onclick="resetAuth()">Reset</button>`;
-  }
+  } // end else (NSG auth)
+  } // end auth view
 
   // ---- OUTPUT VIEW ----
   if(s.view==="output"){
@@ -2529,7 +2846,7 @@ function render(){
       if(sec.codes){
         const cpts=[...new Set(sec.codes.split("\n").map(l=>{const m=l.match(/\b(\d{5})\b/);return m?m[1]:null;}).filter(Boolean))];
         h+=`<div class="card" style="border-left:4px solid #60a5fa"><div class="card-h"><span class="title">📋 CPT Codes</span></div><div class="card-b" style="font-family:monospace;font-size:14px;line-height:2;color:#60a5fa;font-weight:800">`;
-        cpts.forEach(c=>{const rvu=RVU_TABLE[parseInt(c)];h+=`<div>${c}${rvu?` <span style="font-size:11px;color:#86efac;font-weight:400">${rvu} RVU</span>`:""}</div>`;});
+        cpts.forEach(c=>{const rvu=getRVUTable()[parseInt(c)];h+=`<div>${c}${rvu?` <span style="font-size:11px;color:#86efac;font-weight:400">${rvu} RVU</span>`:""}</div>`;});
         h+=`</div></div>`;
       }
       if(sec.mdm)h+=`<div class="card" style="border-left:4px solid #8b5cf6"><div class="card-h"><span class="title">🧠 E/M MDM Scoring</span></div><div class="card-b" id="detailMdmBox"></div></div>`;
@@ -2564,7 +2881,7 @@ function render(){
     h+=`</div>`;
     if(topCpts.length){
       h+=`<div class="card"><div class="card-h"><span class="title">Top CPT Codes</span></div><div class="card-b"><table><thead><tr><th>CPT</th><th>Count</th><th>RVU</th></tr></thead><tbody>`;
-      topCpts.forEach(([c,n])=>{const rvu=RVU_TABLE[parseInt(c)];h+=`<tr><td style="font-weight:700;color:#60a5fa">${c}</td><td>${n}</td><td style="color:#86efac">${rvu||"—"}</td></tr>`;});
+      topCpts.forEach(([c,n])=>{const rvu=getRVUTable()[parseInt(c)];h+=`<tr><td style="font-weight:700;color:#60a5fa">${c}</td><td>${n}</td><td style="color:#86efac">${rvu||"—"}</td></tr>`;});
       h+=`</tbody></table></div></div>`;
     }
   }
