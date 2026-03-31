@@ -2549,9 +2549,9 @@ function render(){
       if(prepAddForm){
         h+=`<div style="margin-top:10px;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:12px">`;
         h+=`<div style="font-size:12px;font-weight:700;color:#f1f5f9;margin-bottom:6px">Add Patient</div>`;
-        h+=`<input id="prepAddNameInput" class="inp" placeholder="Last, First" style="margin-bottom:6px" oninput="prepAddName=this.value" onkeydown="if(event.key==='Enter'&&prepAddName.trim()){addManualPatient(prepAddName,prepAddTime,prepAddType)}" value="${esc(prepAddName)}">`;
+        h+=`<input id="prepAddNameInput" class="inp" placeholder="Last, First" style="margin-bottom:6px" oninput="prepAddName=this.value" onkeydown="if(event.key==='Enter'){addManualPatient(prepAddName,prepAddTime,prepAddType)}" value="${esc(prepAddName)}">`;
         h+=`<div style="display:flex;gap:6px;margin-bottom:6px"><input class="inp" type="time" style="flex:1" value="${esc(prepAddTime)}" oninput="prepAddTime=this.value"><select class="inp" style="flex:1" onchange="prepAddType=this.value"><option ${prepAddType==='Established'?'selected':''}>Established</option><option ${prepAddType==='New Patient'?'selected':''}>New Patient</option><option ${prepAddType==='Post-Op'?'selected':''}>Post-Op</option></select></div>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="addManualPatient(prepAddName,prepAddTime,prepAddType)" ${!prepAddName.trim()?"disabled":""}>Add</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepAddForm=false;render()">Done</button></div></div>`;
+        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="addManualPatient(prepAddName,prepAddTime,prepAddType)">Add</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepAddForm=false;render()">Done</button></div></div>`;
       }
       // Active patient indicator
       if(activePatient){
