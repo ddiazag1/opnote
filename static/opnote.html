@@ -1056,8 +1056,8 @@ sys_clinic:`CLINIC NOTE RULES:
   COMPLEXITY IS DETERMINED BY TOTAL ENCOUNTER TIME — use the TOTAL ENCOUNTER TIME value provided in the input. Use these EXACT thresholds:
     ESTABLISHED PATIENTS: 99212=10-19 min, 99213=20-29 min, 99214=30-39 min, 99215=40+ min
     NEW PATIENTS: 99202=15-29 min, 99203=30-44 min, 99204=45-59 min, 99205=60+ min
-    Map the E/M code to complexity: 99212/99202=STRAIGHTFORWARD, 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
-  Include the total encounter time in the header line: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY ([X] min)"
+    Map the E/M code to complexity: 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
+  Do NOT include the time or minutes in the note header. Just: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
   This header replaces any other opening line.
 - ALLERGIES: Do NOT include an ALLERGIES section in the note. Allergies are documented elsewhere in the EMR and should not be duplicated in the clinic note.
 - CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. Do NOT list every medication — summarize as category counts (e.g. "antihypertensives x2, statin, gabapentin 300mg TID, aspirin 81mg") highlighting only pain meds, anticoagulants, and neuro-relevant medications by name/dose. If not dictated: "CURRENT MEDICATIONS: Per chart review."
@@ -1250,8 +1250,8 @@ sys_clinic:`CLINIC NOTE RULES:
   COMPLEXITY IS DETERMINED BY TOTAL ENCOUNTER TIME — use the TOTAL ENCOUNTER TIME value provided in the input. Use these EXACT thresholds:
     ESTABLISHED PATIENTS: 99212=10-19 min, 99213=20-29 min, 99214=30-39 min, 99215=40+ min
     NEW PATIENTS: 99202=15-29 min, 99203=30-44 min, 99204=45-59 min, 99205=60+ min
-    Map the E/M code to complexity: 99212/99202=STRAIGHTFORWARD, 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
-  Include the total encounter time in the header line: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY ([X] min)"
+    Map the E/M code to complexity: 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
+  Do NOT include the time or minutes in the note header. Just: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
 - ALLERGIES: Do NOT include an ALLERGIES section in the note.
 - CURRENT MEDICATIONS: If new patient, summarize. If not dictated: "CURRENT MEDICATIONS: Per chart review."
 - MANDATORY PHYSICAL EXAM — ENT SPECIALTY FORMAT:
