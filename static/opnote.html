@@ -1671,7 +1671,7 @@ let prepAddForm=false;
 let prepSummaryOpen=false;
 let prepAddName="";
 let prepAddTime="08:00";
-let prepAddType="Follow-up";
+let prepAddType="Established";
 
 const DEMO_SCHEDULE=[
 {id:"1",patient_name:"Patient #1",appointment_time:"07:00",is_surgery:true,visit_type:"OpNote",briefing:"PLANNED PROCEDURE: ACDF C5-6\nLATERALITY: N/A (midline)\nDIAGNOSIS: C5-6 disc herniation with left C6 radiculopathy\n\nSURGICAL ANATOMY:\n- MRI C-spine 1/2/26: C5-6 left paracentral herniation, cord compression\n- CT C-spine 12/15/25: No prior hardware, normal bony anatomy\n- EMG/NCS 12/20/25: Left C6 radiculopathy, active denervation\n\nIMPLANTS/HARDWARE: ACDF cage, anterior plate, screws\nPATIENT FACTORS: BMI 28.3, former smoker, NKDA\nRED FLAGS: None identified",agent_status:"success"},
@@ -1853,7 +1853,7 @@ function addManualPatient(name,time,type){
   const isSurgery=time<'08:00';
   const p={id,patient_name:name,appointment_time:time,is_surgery:isSurgery,visit_type:type,briefing:'',agent_status:'none'};
   prepSchedule.push(p);
-  prepAddForm=false;prepAddName="";prepAddTime="08:00";prepAddType="Follow-up";render();
+  prepAddForm=false;prepAddName="";prepAddTime="08:00";prepAddType="Established";render();
   syncPrepToServer([p]);
 }
 
@@ -2426,10 +2426,8 @@ function render(){
       if(prepSchedule.length>1){h+=`<input class="inp" placeholder="Search patients..." value="${esc(prepSearch)}" oninput="prepSearch=this.value;render()" style="margin-bottom:8px;font-size:12px">`;}
       if(prepLoading){h+=`<div class="ld">Loading schedule...</div>`;}
       else if(!prepSchedule.length){
-        h+=`<div style="text-align:center;padding:20px"><div style="font-size:13px;color:#475569;margin-bottom:12px">No schedule loaded</div>`;
-        h+=`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" style="background:#7c3aed;padding:10px 16px;font-size:12px" onclick="scanSchedule()">📷 Scan Schedule</button>`;
-        h+=`<button class="btn" style="background:#2563eb;padding:10px 16px;font-size:12px" onclick="prepPasteModal=true;render()">Paste Schedule</button>`;
-        h+=`<button class="btn" style="background:#334155;padding:10px 16px;font-size:12px" onclick="prepAddForm=true;render()">+ Add Patient</button>`;
+        h+=`<div style="text-align:center;padding:20px"><div style="font-size:13px;color:#475569;margin-bottom:12px">No patients</div>`;
+        h+=`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" style="background:#334155;padding:10px 16px;font-size:12px" onclick="prepAddForm=true;render()">+ Add Patient</button>`;
         h+=`<button class="btn" style="background:#059669;padding:10px 16px;font-size:12px" onclick="loadDemoSchedule()">Load Demo</button></div></div>`;
       }else{
         // OR Cases section
@@ -2499,7 +2497,7 @@ function render(){
           });
         }
         // Bottom actions
-        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#7c3aed;flex:1;padding:8px;font-size:11px" onclick="scanSchedule()">📷 Scan</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepPasteModal=true;render()">Paste</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#f59e0b;flex:1;padding:8px;font-size:11px;color:#000" onclick="prepSummaryOpen=!prepSummaryOpen;render()">Summary</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button><button class="btn" style="background:#991b1b;flex:1;padding:8px;font-size:11px" onclick="clearAllPatients()">Clear</button></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="prepAddForm=true;render()">+ Add</button><button class="btn" style="background:#f59e0b;flex:1;padding:8px;font-size:11px;color:#000" onclick="prepSummaryOpen=!prepSummaryOpen;render()">Summary</button><button class="btn" style="background:#334155;flex:1;padding:8px;font-size:11px" onclick="fetchPrepSchedule()">Refresh</button><button class="btn" style="background:#991b1b;flex:1;padding:8px;font-size:11px" onclick="clearAllPatients()">Clear</button></div>`;
         // One-page summary panel
         if(prepSummaryOpen){
           h+=`<div style="margin-top:10px;background:#020617;border:2px solid #f59e0b;border-radius:10px;padding:12px">`;
@@ -2542,21 +2540,12 @@ function render(){
           h+=`</div>`;
         }
       }
-      // Paste schedule modal
-      if(prepPasteModal){
-        h+=`<div style="margin-top:10px;background:#020617;border:1px solid #3b82f6;border-radius:10px;padding:12px">`;
-        h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:#60a5fa">Schedule Text</span><button class="btn" style="background:#7c3aed;padding:4px 10px;font-size:10px" onclick="scanSchedule()">📷 Scan Photo</button></div>`;
-        if(ocrProgress)h+=`<div style="font-size:11px;color:#a78bfa;margin-bottom:6px">${esc(ocrProgress)}</div>`;
-        h+=`<textarea class="ta" rows="6" placeholder="Paste schedule text or scan a photo..." style="font-size:12px;margin-bottom:8px" oninput="prepPasteText=this.value">${esc(prepPasteText)}</textarea>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#2563eb;flex:1;padding:10px;font-size:12px" onclick="parseScheduleText(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>Parse (Local)</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="parseScheduleAI(prepPasteText)" ${!prepPasteText.trim()?"disabled":""}>AI Parse</button><button class="btn" style="background:#334155;padding:10px;font-size:12px" onclick="prepPasteModal=false;ocrProgress='';render()">✕</button></div>`;
-        h+=`<div style="font-size:9px;color:#475569;margin-top:6px">Local: names stay on device \u00B7 AI: names redacted server-side</div></div>`;
-      }
       // Add patient form
       if(prepAddForm){
         h+=`<div style="margin-top:10px;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:12px">`;
         h+=`<div style="font-size:12px;font-weight:700;color:#f1f5f9;margin-bottom:6px">Add Patient</div>`;
         h+=`<input class="inp" placeholder="Last, First" style="margin-bottom:6px" oninput="prepAddName=this.value" value="${esc(prepAddName)}">`;
-        h+=`<div style="display:flex;gap:6px;margin-bottom:6px"><input class="inp" type="time" style="flex:1" value="${esc(prepAddTime)}" oninput="prepAddTime=this.value"><select class="inp" style="flex:1" onchange="prepAddType=this.value"><option ${prepAddType==='Follow-up'?'selected':''}>Follow-up</option><option ${prepAddType==='New Patient'?'selected':''}>New Patient</option><option ${prepAddType==='Post-Op'?'selected':''}>Post-Op</option><option ${prepAddType==='Consult'?'selected':''}>Consult</option><option ${prepAddType==='OpNote'?'selected':''}>OpNote</option></select></div>`;
+        h+=`<div style="display:flex;gap:6px;margin-bottom:6px"><input class="inp" type="time" style="flex:1" value="${esc(prepAddTime)}" oninput="prepAddTime=this.value"><select class="inp" style="flex:1" onchange="prepAddType=this.value"><option ${prepAddType==='Established'?'selected':''}>Established</option><option ${prepAddType==='New Patient'?'selected':''}>New Patient</option><option ${prepAddType==='Post-Op'?'selected':''}>Post-Op</option></select></div>`;
         h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="addManualPatient(prepAddName,prepAddTime,prepAddType)" ${!prepAddName.trim()?"disabled":""}>Add</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepAddForm=false;render()">Cancel</button></div></div>`;
       }
       // Active patient indicator
