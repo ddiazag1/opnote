@@ -1067,8 +1067,19 @@ sys_clinic:`CLINIC NOTE RULES:
   * MEDICATIONS → Use in current medications section
   * PROBLEMS → Use in PMH section
   This chart data was pulled specifically for this patient. Ignoring it produces an incomplete note.
-- ASSESSMENT PHRASING: Assessment should read like a surgeon's impression: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis] at [level]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate." NOT "This is a [age]-year-old [gender] who presents with..."
-- ASSESSMENT ICD-10 CODES: EVERY diagnosis in the Assessment MUST include its ICD-10 code in parentheses inline. Format: "Lumbar spinal stenosis (M48.06) at L4-5" or "Cervical radiculopathy (M54.12), left C6". Number each diagnosis. This is MANDATORY — never omit the ICD-10 code from the assessment.
+- COMBINED ASSESSMENT AND PLAN: Use a single "ASSESSMENT AND PLAN" section (NOT separate Assessment and Plan sections). Each numbered diagnosis includes its ICD-10 code AND its specific plan items grouped underneath. Format:
+  ASSESSMENT AND PLAN:
+  1. Lumbar spinal stenosis (M48.06) at L4-5 — [Age] [M/F] w/ [duration] [symptom]. MRI confirms [finding]. Failed [conservative tx]. Surgical candidate.
+     a. Discussed diagnosis, natural history, and treatment options
+     b. Recommend L4-5 laminectomy
+     c. Pre-op: labs, cardiac clearance
+     d. RTC for surgery scheduling
+  2. Cervical radiculopathy (M54.12), left C6 — stable on gabapentin, no motor deficit.
+     a. Continue gabapentin 300mg TID
+     b. Repeat MRI cervical spine in 6 months if symptoms progress
+     c. RTC 6 months
+  Every diagnosis MUST have its ICD-10 code in parentheses. Every diagnosis MUST have at least one plan item. This is MANDATORY.
+- ASSESSMENT PHRASING: Each diagnosis line should read like a surgeon's impression, NOT "This is a [age]-year-old [gender] who presents with..."
 - MANDATORY PHYSICAL EXAM: ALL clinic notes MUST include a PHYSICAL EXAMINATION section. This is NON-NEGOTIABLE.
   If the input contains exam findings, use them exactly. If input has NO physical exam data or PARTIAL exam data, auto-fill with clinically appropriate ASSUMED NORMAL defaults marked ***ASSUMED***. Generate a COMPLETE exam — never leave blank markers.
   PHYSICAL EXAMINATION:
@@ -1083,13 +1094,6 @@ sys_clinic:`CLINIC NOTE RULES:
   CRITICAL: For cauda equina red flags and myelopathy signs, NEVER auto-fill normals — these require actual examination. Use ***NOT EXAMINED — DOCUMENT*** instead.
   The Q: section should ask about exam findings that were assumed, especially any abnormals.
 - REVIEW OF SYSTEMS: Include in all clinic notes. If not dictated, use: "ROS: Positive for [relevant symptoms from HPI]. Negative for weakness, numbness, tingling, gait difficulty, balance problems, headache, dizziness, bowel/bladder dysfunction, fever, chills, night sweats, unexplained weight loss, bilateral symptoms, chest pain, shortness of breath."
-- PLAN STRUCTURE FOR SURGICAL CANDIDATES:
-  PLAN:
-  1. Discussed diagnosis, natural history, and treatment options including continued conservative management, injections, and surgical intervention.
-  2. Risks discussed: [procedure-specific risks]. Benefits and alternatives reviewed.
-  3. Recommend [procedure] at [level(s)].
-  4. Pre-op: [labs, clearances, imaging].
-  5. RTC for surgery scheduling.
 - TEMPLATE ARTIFACT HANDLING: If input contains text in curly braces like {description}, instruction-style text like "if mentioned", "as stated by", "as discussed", or section descriptions rather than actual clinical data, treat these as EMPTY — the data was NOT collected. Do NOT interpret template instructions as clinical findings. Do NOT fabricate values for unfilled template fields.
 - Do NOT ask Q:/DEFAULT: about EBL, blood loss, neuromonitoring, or any operative details. These are irrelevant to clinic visits.
 - Do NOT include a NEUROCHECK or DISPOSITION neurocheck line. Just return precautions.
@@ -1271,16 +1275,20 @@ sys_clinic:`CLINIC NOTE RULES:
   If findings in HPI suggest abnormality, adjust assumed exam to MATCH (e.g. patient reports hearing loss → "Left TM: retracted with effusion ***ASSUMED FROM HPI***").
   For red flags (airway compromise, rapidly enlarging mass, stridor): NEVER auto-fill normals — use ***NOT EXAMINED — DOCUMENT***.
 - Documentation: HPI/PMH/PSH/allergies/medications/SH/FH/ROS personally reviewed by {SURGEON}, MD
-- ASSESSMENT PHRASING: "[Age] [M/F] w/ [duration] [symptom] c/w [diagnosis]. [Imaging/exam confirms]. [Conservative tx status]. [Surgical candidate / continue medical management]."
-- ASSESSMENT ICD-10 CODES: EVERY diagnosis in the Assessment MUST include its ICD-10 code in parentheses inline. Format: "Obstructive sleep apnea (G47.33)" or "Chronic otitis media, left (H66.91)". Number each diagnosis. This is MANDATORY — never omit the ICD-10 code from the assessment.
+- COMBINED ASSESSMENT AND PLAN: Use a single "ASSESSMENT AND PLAN" section (NOT separate Assessment and Plan sections). Each numbered diagnosis includes its ICD-10 code AND its specific plan items grouped underneath. Format:
+  ASSESSMENT AND PLAN:
+  1. Obstructive sleep apnea (G47.33) — [Age] [M/F] w/ [symptoms]. Sleep study confirms [findings].
+     a. Order polysomnography
+     b. Insurance pre-authorization for CPAP
+     c. Weight loss counseling, sleep hygiene
+     d. RTC after sleep study results
+  2. Chronic otitis media, left (H66.91) — recurrent infections, failed oral antibiotics.
+     a. Ciprofloxacin/dexamethasone otic drops x 10 days
+     b. Audiogram
+     c. If refractory, discuss myringotomy with PE tube placement
+  Every diagnosis MUST have its ICD-10 code in parentheses. Every diagnosis MUST have at least one plan item. This is MANDATORY.
+- ASSESSMENT PHRASING: Each diagnosis line should read like a surgeon's impression, NOT "This is a [age]-year-old [gender] who presents with..."
 - Include ROS, PMH/PSH, FAMILY HISTORY (new patient), SOCIAL HISTORY (new patient).
-- PLAN STRUCTURE FOR SURGICAL CANDIDATES:
-  PLAN:
-  1. Discussed diagnosis, natural history, and treatment options.
-  2. Risks discussed: [procedure-specific risks]. Benefits and alternatives reviewed.
-  3. Recommend [procedure].
-  4. Pre-op: [labs, clearances, imaging].
-  5. RTC for surgery scheduling.
 - Do NOT include billing codes in the note body.
 - DUPLICATE SECTION RULE: NEVER output the same section header twice.`,
 sys_codes:`CODE-SPECIFIC (ENT):
