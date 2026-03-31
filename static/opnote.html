@@ -1849,12 +1849,19 @@ async function parseScheduleAI(text){
 }
 
 function addManualPatient(name,time,type){
+  if(!name.trim())return;
   const id='manual_'+Date.now().toString(36);
   const isSurgery=time<'08:00';
   const p={id,patient_name:name,appointment_time:time,is_surgery:isSurgery,visit_type:type,briefing:'',agent_status:'none'};
   prepSchedule.push(p);
-  prepAddForm=false;prepAddName="";prepAddTime="08:00";prepAddType="Established";render();
+  // Keep form open, clear name, bump time by 15 min for next patient
+  prepAddName="";
+  const [h,m]=(time||'08:00').split(':').map(Number);
+  const next=h*60+m+15;prepAddTime=String(Math.floor(next/60)).padStart(2,'0')+':'+String(next%60).padStart(2,'0');
+  render();
   syncPrepToServer([p]);
+  // Focus the name input for rapid entry
+  setTimeout(()=>{const el=document.getElementById('prepAddNameInput');if(el)el.focus();},50);
 }
 
 function scanSchedule(){
@@ -2426,9 +2433,7 @@ function render(){
       if(prepSchedule.length>1){h+=`<input class="inp" placeholder="Search patients..." value="${esc(prepSearch)}" oninput="prepSearch=this.value;render()" style="margin-bottom:8px;font-size:12px">`;}
       if(prepLoading){h+=`<div class="ld">Loading schedule...</div>`;}
       else if(!prepSchedule.length){
-        h+=`<div style="text-align:center;padding:20px"><div style="font-size:13px;color:#475569;margin-bottom:12px">No patients</div>`;
-        h+=`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" style="background:#334155;padding:10px 16px;font-size:12px" onclick="prepAddForm=true;render()">+ Add Patient</button>`;
-        h+=`<button class="btn" style="background:#059669;padding:10px 16px;font-size:12px" onclick="loadDemoSchedule()">Load Demo</button></div></div>`;
+        prepAddForm=true;
       }else{
         // OR Cases section
         if(orCases.length){
@@ -2544,9 +2549,9 @@ function render(){
       if(prepAddForm){
         h+=`<div style="margin-top:10px;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:12px">`;
         h+=`<div style="font-size:12px;font-weight:700;color:#f1f5f9;margin-bottom:6px">Add Patient</div>`;
-        h+=`<input class="inp" placeholder="Last, First" style="margin-bottom:6px" oninput="prepAddName=this.value" value="${esc(prepAddName)}">`;
+        h+=`<input id="prepAddNameInput" class="inp" placeholder="Last, First" style="margin-bottom:6px" oninput="prepAddName=this.value" onkeydown="if(event.key==='Enter'&&prepAddName.trim()){addManualPatient(prepAddName,prepAddTime,prepAddType)}" value="${esc(prepAddName)}">`;
         h+=`<div style="display:flex;gap:6px;margin-bottom:6px"><input class="inp" type="time" style="flex:1" value="${esc(prepAddTime)}" oninput="prepAddTime=this.value"><select class="inp" style="flex:1" onchange="prepAddType=this.value"><option ${prepAddType==='Established'?'selected':''}>Established</option><option ${prepAddType==='New Patient'?'selected':''}>New Patient</option><option ${prepAddType==='Post-Op'?'selected':''}>Post-Op</option></select></div>`;
-        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="addManualPatient(prepAddName,prepAddTime,prepAddType)" ${!prepAddName.trim()?"disabled":""}>Add</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepAddForm=false;render()">Cancel</button></div></div>`;
+        h+=`<div style="display:flex;gap:8px"><button class="btn" style="background:#059669;flex:1;padding:10px;font-size:12px" onclick="addManualPatient(prepAddName,prepAddTime,prepAddType)" ${!prepAddName.trim()?"disabled":""}>Add</button><button class="btn" style="background:#334155;flex:1;padding:10px;font-size:12px" onclick="prepAddForm=false;render()">Done</button></div></div>`;
       }
       // Active patient indicator
       if(activePatient){
