@@ -789,7 +789,9 @@ async function scribeStopRec(){
   render();
 }
 async function scribeDoneRec(){
+  const recDurationSec=scribeStartTime?Math.floor((Date.now()-scribeStartTime)/1000):0;
   await scribeStopRec();
+  state._lastRecDuration=recDurationSec;
   const transcript=_liveTranscript.join('\n');
   if(!transcript.trim()){scribeToast('No speech detected');return;}
   scribeProcessing=true;scribeStatus='Extracting clinical data...';render();
@@ -1051,12 +1053,12 @@ sys_clinic:`CLINIC NOTE RULES:
             "ESTABLISHED PATIENT — HIGH COMPLEXITY"
             "ESTABLISHED PATIENT — POST-OPERATIVE — MODERATE COMPLEXITY"
   Determine NEW vs ESTABLISHED from clinicPt input. Include POST-OPERATIVE if visit type is postop.
-  COMPLEXITY IS DETERMINED BY MDM RISK — use these EXACT rules:
-    - Note recommends ANY surgery → RISK=HIGH → at minimum MODERATE COMPLEXITY (99204/99214)
-    - Note recommends surgery AND patient has motor deficit, myelopathy, or progressive neuro deficit → HIGH COMPLEXITY (99205/99215)
-    - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
-    - Post-op routine check → LOW or MODERATE COMPLEXITY
-  This header replaces any other opening line. The MDM summary sentence goes on the SECOND line.
+  COMPLEXITY IS DETERMINED BY TOTAL ENCOUNTER TIME — use the TOTAL ENCOUNTER TIME value provided in the input. Use these EXACT thresholds:
+    ESTABLISHED PATIENTS: 99212=10-19 min, 99213=20-29 min, 99214=30-39 min, 99215=40+ min
+    NEW PATIENTS: 99202=15-29 min, 99203=30-44 min, 99204=45-59 min, 99205=60+ min
+    Map the E/M code to complexity: 99212/99202=STRAIGHTFORWARD, 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
+  Include the total encounter time in the header line: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY ([X] min)"
+  This header replaces any other opening line.
 - ALLERGIES: Do NOT include an ALLERGIES section in the note. Allergies are documented elsewhere in the EMR and should not be duplicated in the clinic note.
 - CURRENT MEDICATIONS: Include CURRENT MEDICATIONS if new patient. Do NOT list every medication — summarize as category counts (e.g. "antihypertensives x2, statin, gabapentin 300mg TID, aspirin 81mg") highlighting only pain meds, anticoagulants, and neuro-relevant medications by name/dose. If not dictated: "CURRENT MEDICATIONS: Per chart review."
 - INCORPORATING PRIOR CLINICAL CONTEXT: When "PRIOR CLINICAL CONTEXT (from chart review)" is provided, you MUST incorporate ALL of it into the note:
@@ -1154,38 +1156,24 @@ PRE-AUTHORIZATION:
 p1end:`Produce the note. Q:/DEFAULT: first, then full note after NOTE:. All medicolegal for operative. ***ASSUMED***/***IMPLANT*** markers. PRE-AUTHORIZATION for clinic notes recommending surgery.`,
 p2_billing:`Billing analysis. SPECIFIC, GRANULAR, MAXIMALLY AGGRESSIVE within defensible bounds.
 
-E/M MDM SCORING — MANDATORY RULES (DO NOT OVERRIDE WITH CLINICAL JUDGMENT):
-The E/M level is determined by the HIGHEST 2 of 3 MDM elements. Use this exact matrix:
+E/M TIME-BASED CODING — MANDATORY RULES:
+E/M level is determined by TOTAL ENCOUNTER TIME. Look for "TOTAL ENCOUNTER TIME: X minutes" in the note input. Use these EXACT thresholds:
 
-RISK OF COMPLICATIONS (determines RISK element):
-- HIGH: Decision for major surgery (ANY spine surgery = major), drug requiring intensive monitoring, decision for hospitalization, decision for DNR
-- MODERATE: Prescription drug management, minor surgery decision, diagnostic test with sedation
-- LOW: OTC meds, rest, PT referral
-- MINIMAL: Self-limited problem
+ESTABLISHED PATIENTS:
+- 99212: 10-19 minutes
+- 99213: 20-29 minutes
+- 99214: 30-39 minutes
+- 99215: 40+ minutes
 
-IF THE NOTE RECOMMENDS SURGERY → RISK = HIGH. ALWAYS. No exceptions. This is not debatable.
+NEW PATIENTS:
+- 99202: 15-29 minutes
+- 99203: 30-44 minutes
+- 99204: 45-59 minutes
+- 99205: 60+ minutes
 
-NUMBER/COMPLEXITY OF PROBLEMS:
-- HIGH: Acute illness with threat to bodily function (motor deficit, myelopathy, cauda equina, progressive neuro deficit)
-- MODERATE: New problem requiring workup (new radiculopathy, new herniation), chronic illness with mild exacerbation
-- LOW: 2+ self-limited problems, 1 stable chronic illness
+CONSULTS: 99252-99255 (use same time thresholds as new patients).
 
-DATA REVIEWED:
-- HIGH: Independent interpretation of imaging + discussion with external physician OR ordering tests
-- MODERATE: Independent interpretation of imaging (surgeon personally reviewing MRI = moderate)
-- LOW: Review of prior external notes/records
-- MINIMAL: Ordering a test only
-
-SCORING:
-- 99205/99215: 2 of 3 elements at HIGH
-- 99204/99214: 2 of 3 elements at MODERATE (or 1 HIGH + 1 MODERATE)
-- 99203/99213: 2 of 3 elements at LOW
-- New patient: 99202-99205. Established: 99211-99215. Consult: 99252-99255.
-
-EXAMPLES:
-- Clinic note recommending ACDF → Risk=HIGH (surgery), Problems=MODERATE (new radiculopathy), Data=MODERATE (MRI review) → 99204 minimum. If motor deficit → Problems=HIGH → 99205.
-- Follow-up stable post-op → Risk=LOW, Problems=LOW → 99213
-- New myelopathy patient with motor deficit recommending surgery → Risk=HIGH, Problems=HIGH, Data=MODERATE → 99205
+If TOTAL ENCOUNTER TIME is provided, use it to select the E/M code. This overrides MDM-based scoring.
 
 MANDATORY:
 1. NEVER list same CPT twice (add-ons get xN).
@@ -1194,11 +1182,9 @@ MANDATORY:
 4. PSO decompression=63052/63053.
 5. No 69990 without explicit microscope.
 FORMAT:
-E/M MDM SCORING:
--RISK: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
--PROBLEMS: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
--DATA: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
-→ [scoring summary] = [E/M code] ([new/established])
+E/M TIME-BASED CODING:
+-ENCOUNTER TIME: [X] minutes ([new/established])
+→ [E/M code] ([time threshold justification])
 CODES:
 [CODE - Description (X.X RVU) CONFIDENCE]
 MODIFIERS: [with justification]
@@ -1261,10 +1247,11 @@ OPERATIVE NOTE PHYSICAL EXAM RULES:
 - OPERATIVE NOTES do NOT include a PHYSICAL EXAMINATION section. Skip PE entirely for op notes.`,
 sys_clinic:`CLINIC NOTE RULES:
 - MANDATORY FIRST LINE for ALL clinic notes: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY"
-  COMPLEXITY IS DETERMINED BY MDM RISK — same E/M rules as neurosurgery.
-    - Note recommends ANY surgery → RISK=HIGH → at minimum MODERATE COMPLEXITY (99204/99214)
-    - Follow-up, stable, no med changes → LOW COMPLEXITY (99213)
-    - Post-op routine check → LOW or MODERATE COMPLEXITY
+  COMPLEXITY IS DETERMINED BY TOTAL ENCOUNTER TIME — use the TOTAL ENCOUNTER TIME value provided in the input. Use these EXACT thresholds:
+    ESTABLISHED PATIENTS: 99212=10-19 min, 99213=20-29 min, 99214=30-39 min, 99215=40+ min
+    NEW PATIENTS: 99202=15-29 min, 99203=30-44 min, 99204=45-59 min, 99205=60+ min
+    Map the E/M code to complexity: 99212/99202=STRAIGHTFORWARD, 99213/99203=LOW, 99214/99204=MODERATE, 99215/99205=HIGH
+  Include the total encounter time in the header line: "[NEW/ESTABLISHED] PATIENT — [COMPLEXITY] COMPLEXITY ([X] min)"
 - ALLERGIES: Do NOT include an ALLERGIES section in the note.
 - CURRENT MEDICATIONS: If new patient, summarize. If not dictated: "CURRENT MEDICATIONS: Per chart review."
 - MANDATORY PHYSICAL EXAM — ENT SPECIALTY FORMAT:
@@ -1335,9 +1322,11 @@ PRE-AUTHORIZATION (CLINIC NOTES recommending surgery):
 - Required pre-op items`,
 p2_billing:`Billing analysis. SPECIFIC, GRANULAR, MAXIMALLY AGGRESSIVE within defensible bounds.
 
-E/M MDM SCORING — MANDATORY RULES:
-Same E/M MDM scoring matrix as neurosurgery (Risk/Problems/Data, highest 2 of 3).
-IF THE NOTE RECOMMENDS SURGERY → RISK = HIGH. ALWAYS.
+E/M TIME-BASED CODING — MANDATORY RULES:
+E/M level is determined by TOTAL ENCOUNTER TIME. Look for "TOTAL ENCOUNTER TIME: X minutes" in the note input. Use these EXACT thresholds:
+ESTABLISHED: 99212=10-19 min, 99213=20-29 min, 99214=30-39 min, 99215=40+ min
+NEW: 99202=15-29 min, 99203=30-44 min, 99204=45-59 min, 99205=60+ min
+If TOTAL ENCOUNTER TIME is provided, use it to select the E/M code. This overrides MDM.
 
 MANDATORY:
 1. NEVER list same CPT twice (per-sinus add-ons listed once each).
@@ -1345,11 +1334,9 @@ MANDATORY:
 3. Bilateral modifier -50 when applicable.
 4. T&A codes are age-dependent.
 FORMAT:
-E/M MDM SCORING:
--RISK: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
--PROBLEMS: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
--DATA: [HIGH/MODERATE/LOW/MINIMAL] ([justification])
-→ [scoring] = [E/M code] ([new/established])
+E/M TIME-BASED CODING:
+-ENCOUNTER TIME: [X] minutes ([new/established])
+→ [E/M code] ([time threshold justification])
 CODES:
 [CODE - Description (X.X RVU) CONFIDENCE]
 MODIFIERS: [with justification]
@@ -2075,6 +2062,9 @@ async function processCase(){
     let dictContent=text.trim();
     // Inject today's date for elapsed-time calculations
     const _today=new Date();dictContent="TODAY'S DATE: "+(_today.getMonth()+1)+"/"+_today.getDate()+"/"+_today.getFullYear()+"\n\n"+dictContent;
+    // Inject encounter time for time-based E/M coding (recording time + 10 min)
+    const _recSec=state._lastRecDuration||0;
+    if(_recSec>0&&nt!=='operative'){const encounterMin=Math.ceil(_recSec/60)+10;dictContent="TOTAL ENCOUNTER TIME: "+encounterMin+" minutes ("+Math.ceil(_recSec/60)+" min recorded + 10 min pre/post)\n"+dictContent;}
     // Inject prep context (prior MRI, last note, meds, problems) from schedule
     const _pc=state._prepContext||'';
     if(_pc){
@@ -2096,7 +2086,8 @@ async function processCase(){
     // Save case IMMEDIATELY after note generation (before billing)
     const pm=note.match(/PROCEDURE[^:]*:\s*([^\n]+)/i)||note.match(/ASSESSMENT[^:]*:\s*([^\n]+)/i);
     const proc=pm?pm[1].slice(0,70).trim():"Case";
-    const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:"",dict:text};
+    const _encMin=state._lastRecDuration?Math.ceil(state._lastRecDuration/60)+10:0;
+    const noteEntry={type:nt,ts:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}),note:note,billRaw:"",dict:text,encounterMin:_encMin};
     let _savedCaseId=null;
     if(state.linkedTo){
       _savedCaseId=state.linkedTo;
